@@ -1408,7 +1408,8 @@ function renderHistoryTable() {
     tbody.innerHTML = allTransactions.map(tx => {
         if(tx.isSale) {
             const balance = tx.revenue - tx.collected;
-            const title = tx.type === 'custom' ? `Projet: ${tx.projectName || tx.clientName}` : `Client: ${tx.clientName}`;
+            const clientName = tx.clientName || '—';
+            const projectName = tx.type === 'custom' ? (tx.projectName || '—') : '—';
             let typeBadge = '';
             if(tx.type==='audit') typeBadge='<span class="status-badge warning">Audit</span>';
             else if(tx.type==='telephonie') typeBadge='<span class="status-badge good">Téléphonie</span>';
@@ -1417,7 +1418,8 @@ function renderHistoryTable() {
             return `
             <tr>
                 <td class="value-cell">${tx.date}</td>
-                <td style="font-weight:600;">${title}</td>
+                <td style="font-weight:600;">${clientName}</td>
+                <td style="color:var(--text-secondary);">${projectName}</td>
                 <td>${typeBadge}</td>
                 <td class="value-cell" style="font-weight:bold;">${formatCurrency(tx.revenue)}</td>
                 <td class="value-cell text-success">${formatCurrency(tx.collected)}</td>
@@ -1429,10 +1431,15 @@ function renderHistoryTable() {
             </tr>
             `;
         } else {
+            // For collections, find the parent sale to get client + project separately
+            const parentSale = appData.salesLog.find(s => s.id === tx.saleId);
+            const collClient = parentSale ? (parentSale.clientName || '—') : tx.clientName;
+            const collProject = parentSale && parentSale.type === 'custom' ? (parentSale.projectName || '—') : '—';
             return `
             <tr style="background-color: rgba(59, 130, 246, 0.03);">
                 <td class="value-cell">${tx.date}</td>
-                <td style="font-weight:600; color:var(--accent-blue);">↳ Encaissement: ${tx.clientName}</td>
+                <td style="font-weight:600; color:var(--accent-blue);">↳ ${collClient}</td>
+                <td style="color:var(--text-muted);">${collProject}</td>
                 <td><span class="status-badge info" style="background:#e0f2fe; color:#0284c7; border-color:#bae6fd;">Paiement Backend</span></td>
                 <td class="value-cell" style="color:var(--text-muted);">-</td>
                 <td class="value-cell text-success" style="font-weight:bold;">+ ${formatCurrency(tx.amount)}</td>
@@ -1446,7 +1453,7 @@ function renderHistoryTable() {
     }).join('');
 
     if(allTransactions.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 20px; color:var(--text-muted);">Aucune transaction enregistrée</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 20px; color:var(--text-muted);">Aucune transaction enregistrée</td></tr>';
     }
 }
 
