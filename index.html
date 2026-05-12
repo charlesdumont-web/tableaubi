@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Synchro IA — Tableau de bord BI intelligent pour le suivi des KPIs">
+  <title>Synchro IA — Dashboard BI</title>
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  
+  <!-- Loading Overlay -->
+  <div id="app-loading" style="position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-primary); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+    <div class="loader" style="width:40px; height:40px; border:4px solid var(--border-color); border-top-color:var(--accent-cyan); border-radius:50%; animation:spin 1s linear infinite; margin-bottom:16px;"></div>
+    <h2 style="color:var(--text-primary); font-size:18px; font-weight:600;">Connexion au Serveur...</h2>
+  </div>
+  <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">
+          <div class="logo-icon">S</div>
+          <div class="logo-text">
+            <span class="company">Synchro IA</span>
+            <span class="subtitle">Dashboard BI</span>
+          </div>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Principal</div>
+        <div class="nav-item active" data-section="overview" id="nav-overview">
+          <span class="icon">📊</span> Vue d'ensemble
+        </div>
+        <div class="nav-section-title">Départements</div>
+        <div class="nav-item" data-section="northstar" id="nav-northstar">
+          <span class="icon">⭐</span> North Star Metrics
+        </div>
+        <div class="nav-item" data-section="marketing" id="nav-marketing">
+          <span class="icon">📣</span> Marketing
+        </div>
+        <div class="nav-item" data-section="sales" id="nav-sales">
+          <span class="icon">🎯</span> Sales Team
+        </div>
+        <div class="nav-item" data-section="client" id="nav-client">
+          <span class="icon">🤝</span> Client Success
+        </div>
+        <div class="nav-section-title">Outils</div>
+        <div class="nav-item" data-section="history" id="nav-history">
+          <span class="icon">📜</span> Transactions
+        </div>
+        <div class="nav-item" data-section="alerts" id="nav-alerts">
+          <span class="icon">🔔</span> Alertes
+          <span class="badge" id="alert-count" style="display:none;">0</span>
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="update-info">
+          <span>🕐</span>
+          <span id="last-update">Aucune mise à jour</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main-content">
+      <header class="main-header">
+        <div class="header-left">
+          <button class="btn btn-ghost" id="menu-toggle" style="display:none;">☰</button>
+          <h1>KPI Scorecards</h1>
+          <select id="global-date-filter" class="form-select" style="margin-left: 16px; width: 200px; padding: 6px 12px; font-weight: 600;">
+            <option value="month" selected>Ce mois-ci</option>
+            <option value="30days">30 derniers jours</option>
+            <option value="3months">Derniers 3 mois</option>
+            <option value="ytd">Cette année</option>
+            <option value="all">Toujours</option>
+            <option value="custom">Personnalisé...</option>
+          </select>
+          <div id="custom-date-container" style="display: none; align-items: center; gap: 8px; margin-left: 12px;">
+            <input type="date" id="custom-date-start" class="form-input" style="padding: 4px 8px; font-size: 13px;">
+            <span style="color:var(--text-muted)">au</span>
+            <input type="date" id="custom-date-end" class="form-input" style="padding: 4px 8px; font-size: 13px;">
+          </div>
+          <span class="period-badge" id="period-badge" style="display:none;">Mai 2026</span>
+        </div>
+        <div class="header-right">
+          <button class="btn btn-secondary" id="btn-collection">💰 Nouvel Encaissement</button>
+          <button class="btn btn-primary" id="btn-newsale" style="background: var(--success); box-shadow: 0 4px 12px rgba(16,185,129,0.25);">💸 Nouvelle Vente</button>
+          <button class="btn btn-secondary" id="btn-goals">⚙️ Objectifs</button>
+          <button class="btn btn-secondary" id="btn-export">📥 Exporter CSV</button>
+          <button class="btn btn-primary" id="btn-update">⚙️ Entrée de données</button>
+        </div>
+      </header>
+
+      <div class="page-content">
+
+        <!-- ===== OVERVIEW ===== -->
+        <section class="section active" id="section-overview">
+          <div class="kpi-summary-grid" id="summary-cards"></div>
+          <div class="charts-grid">
+            <div class="chart-card">
+              <div class="chart-card-header">
+                <h3>💰 Cash Collecté — Tendance Hebdo</h3>
+              </div>
+              <div class="chart-container medium"><canvas id="chart-cash-trend"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-header">
+                <h3>🎯 Actual vs Target — Mensuel</h3>
+              </div>
+              <div class="chart-container medium"><canvas id="chart-overview-funnel"></canvas></div>
+            </div>
+          </div>
+          <div class="data-table-card">
+            <div class="data-table-header">
+              <h3>📋 Résumé complet des KPIs</h3>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="data-table" id="overview-table">
+                <thead><tr id="overview-thead"></tr></thead>
+                <tbody id="overview-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== NORTH STAR ===== -->
+        <section class="section" id="section-northstar">
+          <div class="dept-header">
+            <div class="dept-icon" style="background:rgba(0,212,255,0.1);color:var(--accent-cyan);">⭐</div>
+            <div class="dept-info">
+              <h2>North Star Metrics</h2>
+              <p>Métriques financières essentielles de Synchro IA</p>
+            </div>
+          </div>
+          <div class="kpi-summary-grid" id="northstar-cards"></div>
+          <div class="charts-grid">
+            <div class="chart-card">
+              <div class="chart-card-header"><h3>📈 Revenus Hebdomadaires</h3></div>
+              <div class="chart-container medium"><canvas id="chart-ns-revenue"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-header"><h3>🔄 MRR vs Churn</h3></div>
+              <div class="chart-container medium"><canvas id="chart-ns-mrr"></canvas></div>
+            </div>
+          </div>
+          <div class="data-table-card">
+            <div class="data-table-header"><h3>📊 Détails North Star</h3></div>
+            <div style="overflow-x:auto;">
+              <table class="data-table"><thead><tr id="ns-thead"></tr></thead><tbody id="ns-tbody"></tbody></table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== MARKETING ===== -->
+        <section class="section" id="section-marketing">
+          <div class="dept-header">
+            <div class="dept-icon" style="background:rgba(124,58,237,0.1);color:var(--accent-purple);">📣</div>
+            <div class="dept-info">
+              <h2>Marketing</h2>
+              <p>Acquisition, dépenses publicitaires et performance des leads</p>
+            </div>
+          </div>
+          <div class="kpi-summary-grid" id="marketing-cards"></div>
+          <div class="charts-grid">
+            <div class="chart-card">
+              <div class="chart-card-header"><h3>📊 Ad Spend vs Leads</h3></div>
+              <div class="chart-container medium"><canvas id="chart-mk-spend"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-header"><h3>💎 ROAS & Coût par Call</h3></div>
+              <div class="chart-container medium"><canvas id="chart-mk-roas"></canvas></div>
+            </div>
+          </div>
+          <div class="data-table-card">
+            <div class="data-table-header"><h3>📊 Détails Marketing</h3></div>
+            <div style="overflow-x:auto;">
+              <table class="data-table"><thead><tr id="mk-thead"></tr></thead><tbody id="mk-tbody"></tbody></table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== SALES ===== -->
+        <section class="section" id="section-sales">
+          <div class="dept-header">
+            <div class="dept-icon" style="background:rgba(59,130,246,0.1);color:var(--accent-blue);">🎯</div>
+            <div class="dept-info">
+              <h2>Sales Team</h2>
+              <p>Pipeline de vente, taux de conversion et performance commerciale</p>
+            </div>
+          </div>
+          <div class="kpi-summary-grid" id="sales-cards"></div>
+          <div class="charts-grid">
+            <div class="chart-card">
+              <div class="chart-card-header"><h3>🔻 Funnel de Vente</h3></div>
+              <div class="chart-container medium"><canvas id="chart-sl-funnel"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-header"><h3>📊 Taux de Conversion</h3></div>
+              <div class="chart-container medium"><canvas id="chart-sl-rates"></canvas></div>
+            </div>
+          </div>
+          <div class="data-table-card">
+            <div class="data-table-header"><h3>📊 Détails Sales</h3></div>
+            <div style="overflow-x:auto;">
+              <table class="data-table"><thead><tr id="sl-thead"></tr></thead><tbody id="sl-tbody"></tbody></table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== CLIENT SUCCESS ===== -->
+        <section class="section" id="section-client">
+          <div class="dept-header">
+            <div class="dept-icon" style="background:rgba(16,185,129,0.1);color:var(--success);">🤝</div>
+            <div class="dept-info">
+              <h2>Client Success</h2>
+              <p>Rétention, renouvellements et satisfaction client</p>
+            </div>
+          </div>
+          <div class="kpi-summary-grid" id="client-cards"></div>
+          <div class="charts-grid">
+            <div class="chart-card">
+              <div class="chart-card-header"><h3>👥 Clients Actifs vs Churn</h3></div>
+              <div class="chart-container medium"><canvas id="chart-cs-clients"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-header"><h3>🔄 Taux de Renouvellement</h3></div>
+              <div class="chart-container medium"><canvas id="chart-cs-renewal"></canvas></div>
+            </div>
+          </div>
+          <div class="data-table-card">
+            <div class="data-table-header"><h3>📊 Détails Client Success</h3></div>
+            <div style="overflow-x:auto;">
+              <table class="data-table"><thead><tr id="cs-thead"></tr></thead><tbody id="cs-tbody"></tbody></table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== HISTORY ===== -->
+        <section class="section" id="section-history">
+          <div class="dept-header">
+            <div class="dept-icon" style="background:rgba(0,0,0,0.05);color:var(--text-secondary);">📜</div>
+            <div class="dept-info">
+              <h2>Historique des Transactions</h2>
+              <p>Journal des ventes, encaissements et gestion des erreurs</p>
+            </div>
+          </div>
+          <div class="data-table-card">
+            <div class="data-table-header"><h3>Toutes les transactions</h3></div>
+            <div style="overflow-x:auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Client / Projet</th>
+                    <th>Type</th>
+                    <th>Revenu Total</th>
+                    <th>Encaissé Total</th>
+                    <th>Balance</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="history-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== ALERTS ===== -->
+        <section class="section" id="section-alerts">
+          <div class="dept-header">
+            <div class="dept-icon" style="background:rgba(245,158,11,0.1);color:var(--warning);">🔔</div>
+            <div class="dept-info">
+              <h2>Centre d'alertes</h2>
+              <p>KPIs nécessitant une attention immédiate</p>
+            </div>
+          </div>
+          <div class="alert-list" id="alert-list"></div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal Data Entry -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modal-title">Mettre à jour les KPIs</h2>
+        <button class="modal-close" id="modal-close">✕</button>
+      </div>
+      <div class="modal-body" id="modal-body">
+        <div class="tab-pills" id="modal-tabs"></div>
+        <div id="modal-form-content"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="modal-cancel">Annuler</button>
+        <button class="btn btn-primary" id="modal-save">💾 Sauvegarder</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Goals -->
+  <div class="modal-overlay" id="modal-goals-overlay">
+    <div class="modal" style="max-width: 1000px;">
+      <div class="modal-header">
+        <h2>Gestion des Objectifs</h2>
+        <button class="modal-close" id="modal-goals-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="tab-pills" id="modal-goals-tabs"></div>
+        <div id="modal-goals-content"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="modal-goals-cancel">Annuler</button>
+        <button class="btn btn-primary" id="modal-goals-save">💾 Sauvegarder</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal New Sale -->
+  <div class="modal-overlay" id="modal-newsale-overlay">
+    <div class="modal" style="max-width: 600px;">
+      <div class="modal-header">
+        <h2>💸 Enregistrer une Nouvelle Vente</h2>
+        <button class="modal-close" id="modal-newsale-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid" style="margin-bottom: 20px;">
+          <div class="form-group">
+            <label class="form-label">Date exacte</label>
+            <input type="date" id="sale-date" class="form-input" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nom du Client</label>
+            <input type="text" id="sale-client" class="form-input" placeholder="Ex: Entreprise XYZ" required>
+          </div>
+        </div>
+        <div class="form-group" id="group-project-name" style="display:none; margin-bottom: 20px;">
+          <label class="form-label">Nom du Projet (Sur Mesure)</label>
+          <input type="text" id="sale-project-name" class="form-input" placeholder="Ex: Déploiement CRM Automatisé">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type de Vente</label>
+          <select id="sale-type" class="form-select">
+            <option value="audit">Audit IA (1 995 $)</option>
+            <option value="telephonie">Téléphonie IA (1 500 $ / trim)</option>
+            <option value="custom">Projet Sur Mesure</option>
+          </select>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Montant Total (Revenu)</label>
+            <input type="number" id="sale-revenue" class="form-input" value="1995">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Encaissé (Frontend Cash)</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="number" id="sale-percent" class="form-input" placeholder="%" style="width: 80px;" title="Pourcentage">
+              <input type="number" id="sale-frontend" class="form-input" value="1995" style="flex: 1;">
+            </div>
+          </div>
+        </div>
+        
+        <div id="milestones-section" style="display:none; margin-top: 16px; padding: 16px; background: rgba(0,0,0,0.02); border-radius: var(--radius-sm); border: 1px dashed var(--border-color);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+            <label class="form-label" style="margin:0;">Jalons de paiement futurs (Backend)</label>
+            <button id="btn-add-milestone" class="btn btn-secondary" style="font-size:11px; padding: 4px 8px;">+ Ajouter un Jalon</button>
+          </div>
+          <div id="milestones-container" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+        <div style="margin-top: 16px; font-size: 12px; color: var(--text-muted);">
+          * Cette action ajoutera automatiquement les montants ci-dessus au revenu et cash de la semaine sélectionnée, et ajoutera +1 aux Nouveaux Clients.
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content: flex-end;">
+        <div style="display: flex; gap: 12px;">
+          <button class="btn btn-secondary" id="modal-newsale-cancel">Annuler</button>
+          <button class="btn btn-primary" id="modal-newsale-save" style="background: var(--success); border-color: var(--success); box-shadow: 0 4px 12px rgba(16,185,129,0.25);">Enregistrer la Vente</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Collection Modal -->
+  <div class="modal-overlay" id="modal-collection-overlay">
+    <div class="modal" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2>💰 Nouvel Encaissement (Backend Cash)</h2>
+        <button class="modal-close" id="modal-collection-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Date de l'encaissement</label>
+          <input type="date" id="collection-date" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Projet / Client en attente de paiement</label>
+          <select id="collection-project" class="form-select">
+            <!-- Populated dynamically -->
+          </select>
+        </div>
+        
+        <div id="collection-milestones-section" style="display:none; margin-top: 12px; margin-bottom: 16px; padding: 12px; background: rgba(0,0,0,0.02); border-radius: var(--radius-sm); border: 1px dashed var(--border-color);">
+          <label class="form-label" style="margin-bottom:8px;">Jalons prévus pour ce projet</label>
+          <div id="collection-milestones-container" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Montant Encaissé ($)</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="number" id="collection-percent" class="form-input" placeholder="%" style="width: 80px;" title="Pourcentage">
+            <input type="number" id="collection-amount" class="form-input" placeholder="Ex: 5000" min="0" style="flex: 1;" required>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="modal-collection-cancel">Annuler</button>
+        <button class="btn btn-primary" id="modal-collection-save">Enregistrer l'Encaissement</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Edit Sale -->
+  <div class="modal-overlay" id="modal-editsale-overlay">
+    <div class="modal" style="max-width: 600px;">
+      <div class="modal-header">
+        <h2>✏️ Modifier la Transaction</h2>
+        <button class="modal-close" id="modal-editsale-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edit-sale-id">
+        <div class="form-grid" style="margin-bottom: 20px;">
+          <div class="form-group">
+            <label class="form-label">Date exacte</label>
+            <input type="date" id="edit-sale-date" class="form-input" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nom du Client / Projet</label>
+            <input type="text" id="edit-sale-client" class="form-input" disabled style="background:#f1f5f9;">
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Montant Total (Revenu)</label>
+            <input type="number" id="edit-sale-revenue" class="form-input">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Encaissé initial (Frontend Cash)</label>
+            <input type="number" id="edit-sale-frontend" class="form-input">
+          </div>
+        </div>
+        <div style="margin-top: 16px; font-size: 12px; color: var(--warning); font-weight:600;">
+          ⚠️ Modifier ces montants ajustera automatiquement les KPIs de la semaine correspondante. Les encaissements backend ultérieurs ne seront pas modifiés.
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content: flex-end;">
+        <button class="btn btn-secondary" id="modal-editsale-cancel">Annuler</button>
+        <button class="btn btn-primary" id="modal-editsale-save">Enregistrer les Modifications</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="app.js?v=10"></script>
+</body>
+</html>
