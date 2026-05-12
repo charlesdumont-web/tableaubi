@@ -53,6 +53,10 @@
         <div class="nav-item" data-section="history" id="nav-history">
           <span class="icon">📜</span> Transactions
         </div>
+        <div class="nav-item" data-section="receivables" id="nav-receivables">
+          <span class="icon">💳</span> Comptes à recevoir
+          <span class="badge" id="receivables-count" style="display:none;">0</span>
+        </div>
         <div class="nav-item" data-section="alerts" id="nav-alerts">
           <span class="icon">🔔</span> Alertes
           <span class="badge" id="alert-count" style="display:none;">0</span>
@@ -270,6 +274,40 @@
           </div>
         </section>
 
+        <!-- ===== RECEIVABLES ===== -->
+        <section class="section" id="section-receivables">
+          <div class="dept-header">
+            <div class="dept-icon" style="background:rgba(245,158,11,0.1);color:var(--warning);">💳</div>
+            <div class="dept-info">
+              <h2>Comptes à recevoir</h2>
+              <p>Montants backend en attente d'encaissement par projet</p>
+            </div>
+          </div>
+
+          <div class="kpi-summary-grid" id="receivables-summary-cards"></div>
+
+          <div class="data-table-card">
+            <div class="data-table-header"><h3>Détail des montants à encaisser</h3></div>
+            <div style="overflow-x:auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Client / Projet</th>
+                    <th>Type</th>
+                    <th>Revenu Total</th>
+                    <th>Encaissé</th>
+                    <th>Reste à encaisser</th>
+                    <th>% Encaissé</th>
+                    <th>Prochains jalons</th>
+                  </tr>
+                </thead>
+                <tbody id="receivables-tbody"></tbody>
+                <tfoot id="receivables-tfoot"></tfoot>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <!-- ===== ALERTS ===== -->
         <section class="section" id="section-alerts">
           <div class="dept-header">
@@ -465,6 +503,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>

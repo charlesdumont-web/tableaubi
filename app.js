@@ -1172,6 +1172,140 @@ function initCollectionModal() {
     }
 }
 
+// --- Receivables ---
+function renderReceivables() {
+    const tbody = document.getElementById('receivables-tbody');
+    const tfoot = document.getElementById('receivables-tfoot');
+    const cardsEl = document.getElementById('receivables-summary-cards');
+    const badge = document.getElementById('receivables-count');
+    if(!tbody) return;
+
+    // Filter sales with outstanding balance (exclude telephony which uses subscription system)
+    const pending = (appData.salesLog || []).filter(s => {
+        const balance = s.revenue - s.collected;
+        return balance > 0.01 && s.type !== 'telephonie';
+    });
+
+    // Summary stats
+    const totalRevenue = pending.reduce((a, s) => a + s.revenue, 0);
+    const totalCollected = pending.reduce((a, s) => a + s.collected, 0);
+    const totalBalance = totalRevenue - totalCollected;
+    const overallPct = totalRevenue > 0 ? Math.round((totalCollected / totalRevenue) * 100) : 0;
+
+    // Badge
+    if(badge) {
+        badge.innerText = pending.length;
+        badge.style.display = pending.length > 0 ? 'block' : 'none';
+    }
+
+    // Summary cards
+    if(cardsEl) {
+        cardsEl.innerHTML = `
+            <div class="kpi-summary-card cyan">
+                <div class="kpi-card-header">
+                    <div class="icon-wrap cyan">💰</div>
+                </div>
+                <div class="kpi-card-label">Total à recevoir</div>
+                <div class="kpi-card-value">${formatCurrency(totalBalance)}</div>
+                <div class="kpi-card-target">
+                    <span>${pending.length} projet${pending.length > 1 ? 's' : ''} en cours</span>
+                </div>
+            </div>
+            <div class="kpi-summary-card green">
+                <div class="kpi-card-header">
+                    <div class="icon-wrap green">✅</div>
+                </div>
+                <div class="kpi-card-label">Déjà encaissé (Backend)</div>
+                <div class="kpi-card-value">${formatCurrency(totalCollected)}</div>
+                <div class="kpi-card-target">
+                    <span>Sur ${formatCurrency(totalRevenue)} total</span>
+                    <span style="margin-left:auto">${overallPct}%</span>
+                </div>
+                <div class="progress-bar-wrap" style="margin-top:8px">
+                    <div class="progress-bar" style="width:${Math.min(overallPct, 100)}%; background: var(--success);"></div>
+                </div>
+            </div>
+            <div class="kpi-summary-card purple">
+                <div class="kpi-card-header">
+                    <div class="icon-wrap purple">📊</div>
+                </div>
+                <div class="kpi-card-label">Revenu total pipeline</div>
+                <div class="kpi-card-value">${formatCurrency(totalRevenue)}</div>
+                <div class="kpi-card-target">
+                    <span>Tous projets confondus</span>
+                </div>
+            </div>
+        `;
+    }
+
+    // Table rows
+    tbody.innerHTML = pending.map(sale => {
+        const balance = sale.revenue - sale.collected;
+        const pct = sale.revenue > 0 ? Math.round((sale.collected / sale.revenue) * 100) : 0;
+        const name = sale.type === 'custom' ? (sale.projectName || sale.clientName) : sale.clientName;
+
+        let typeBadge = '';
+        if(sale.type === 'audit') typeBadge = '<span class="status-badge warning">Audit</span>';
+        else typeBadge = '<span class="status-badge">Sur Mesure</span>';
+
+        // Milestones info
+        let milestonesHtml = '<span style="color:var(--text-muted); font-size:12px;">—</span>';
+        if(sale.milestones && sale.milestones.length > 0) {
+            const pending_ms = sale.milestones.filter(m => !m.collected);
+            if(pending_ms.length > 0) {
+                milestonesHtml = pending_ms.map(m => {
+                    const msLabel = m.label || 'Jalon';
+                    return `<div style="font-size:12px; padding:2px 0;"><span style="color:var(--warning);">⏳</span> ${msLabel}: <strong>${formatCurrency(m.amount)}</strong></div>`;
+                }).join('');
+            } else {
+                milestonesHtml = '<span style="color:var(--success); font-size:12px;">✅ Tous complétés</span>';
+            }
+        }
+
+        return `
+            <tr>
+                <td style="font-weight:600;">${name}</td>
+                <td>${typeBadge}</td>
+                <td class="value-cell">${formatCurrency(sale.revenue)}</td>
+                <td class="value-cell text-success">${formatCurrency(sale.collected)}</td>
+                <td class="value-cell" style="font-weight:700; color:var(--warning);">${formatCurrency(balance)}</td>
+                <td class="value-cell">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div class="progress-bar-wrap" style="flex:1; height:6px;">
+                            <div class="progress-bar" style="width:${pct}%; background: ${pct >= 75 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : 'var(--danger)'};"></div>
+                        </div>
+                        <span style="font-size:12px; font-weight:600;">${pct}%</span>
+                    </div>
+                </td>
+                <td>${milestonesHtml}</td>
+            </tr>
+        `;
+    }).join('');
+
+    // Footer totals
+    if(tfoot) {
+        if(pending.length > 0) {
+            tfoot.innerHTML = `
+                <tr style="font-weight:700; background: rgba(0,51,153,0.04); border-top: 2px solid var(--border-color);">
+                    <td>TOTAL</td>
+                    <td>${pending.length} projets</td>
+                    <td class="value-cell">${formatCurrency(totalRevenue)}</td>
+                    <td class="value-cell text-success">${formatCurrency(totalCollected)}</td>
+                    <td class="value-cell" style="color:var(--warning);">${formatCurrency(totalBalance)}</td>
+                    <td class="value-cell">${overallPct}%</td>
+                    <td></td>
+                </tr>
+            `;
+        } else {
+            tfoot.innerHTML = '';
+        }
+    }
+
+    if(pending.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-muted);">🎉 Aucun montant en attente ! Tout est encaissé.</td></tr>';
+    }
+}
+
 // --- Init ---
 function updateUI() {
     calculateDerivedKPIs();
@@ -1180,6 +1314,7 @@ function updateUI() {
     updateAlerts();
     renderCharts();
     renderHistoryTable();
+    renderReceivables();
 }
 
 function initDateFilter() {
