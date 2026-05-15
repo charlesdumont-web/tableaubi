@@ -2016,82 +2016,140 @@ document.addEventListener('DOMContentLoaded', () => {
     // CRM: Client search
     document.getElementById('clients-search')?.addEventListener('input', () => renderClients());
 
-    // Cash Flow: Add Recurring Expense
-    document.querySelector('.btn-add-recurring')?.addEventListener('click', () => {
-        const name = prompt('Nom de la dépense (ex: Bureau WeWork) :');
-        if (!name) return;
-        const amount = parseFloat(prompt('Montant ($) :'));
-        if (isNaN(amount) || amount <= 0) return;
-        const category = prompt('Catégorie (loyer, logiciel, assurance, autre) :') || 'autre';
-        const frequency = prompt('Fréquence (monthly ou biweekly) :') || 'monthly';
+    // ===== MODAL: Recurring Expense =====
+    const recurringModal = document.getElementById('modal-recurring-overlay');
+    const openRecurring = () => { recurringModal.classList.add('open'); };
+    const closeRecurring = () => { recurringModal.classList.remove('open'); };
+    document.querySelector('.btn-add-recurring')?.addEventListener('click', openRecurring);
+    document.getElementById('modal-recurring-close')?.addEventListener('click', closeRecurring);
+    document.getElementById('modal-recurring-cancel')?.addEventListener('click', closeRecurring);
+    recurringModal?.querySelector('.modal-footer .btn-primary')?.addEventListener('click', () => {
+        const name = document.getElementById('recurring-name').value.trim();
+        const amount = parseFloat(document.getElementById('recurring-amount').value);
+        if (!name || isNaN(amount) || amount <= 0) { alert('Veuillez remplir le nom et le montant.'); return; }
         appData.cashflow.recurringExpenses.push({
             id: 'rec_' + Date.now(),
-            name, amount, category,
-            frequency: frequency === 'biweekly' ? 'biweekly' : 'monthly',
+            name,
+            amount,
+            category: document.getElementById('recurring-category').value,
+            frequency: document.getElementById('recurring-frequency').value,
             active: true
         });
-        saveData();
+        saveData(); closeRecurring();
+        document.getElementById('recurring-name').value = '';
+        document.getElementById('recurring-amount').value = '';
+        const toast = document.createElement('div'); toast.className = 'toast success'; toast.innerHTML = `✅ Dépense récurrente ajoutée : ${name}`; document.body.appendChild(toast); setTimeout(() => toast.remove(), 4000);
     });
 
-    // Cash Flow: Add Salary
-    document.querySelector('.btn-add-salary')?.addEventListener('click', () => {
-        const name = prompt('Nom de l\'employé :');
-        if (!name) return;
-        const amount = parseFloat(prompt('Montant par paie ($) :'));
-        if (isNaN(amount) || amount <= 0) return;
-        const frequency = prompt('Fréquence (monthly ou biweekly) :') || 'biweekly';
+    // ===== MODAL: Salary =====
+    const salaryModal = document.getElementById('modal-salary-overlay');
+    const openSalary = () => { salaryModal.classList.add('open'); };
+    const closeSalary = () => { salaryModal.classList.remove('open'); };
+    document.querySelector('.btn-add-salary')?.addEventListener('click', openSalary);
+    document.getElementById('modal-salary-close')?.addEventListener('click', closeSalary);
+    document.getElementById('modal-salary-cancel')?.addEventListener('click', closeSalary);
+    salaryModal?.querySelector('.modal-footer .btn-primary')?.addEventListener('click', () => {
+        const name = document.getElementById('salary-name').value.trim();
+        const amount = parseFloat(document.getElementById('salary-amount').value);
+        if (!name || isNaN(amount) || amount <= 0) { alert('Veuillez remplir le nom et le montant.'); return; }
         appData.cashflow.salaries.push({
             id: 'sal_' + Date.now(),
-            employeeName: name, amount,
-            frequency: frequency === 'monthly' ? 'monthly' : 'biweekly',
+            employeeName: name,
+            amount,
+            frequency: document.getElementById('salary-frequency').value,
             active: true
         });
-        saveData();
+        saveData(); closeSalary();
+        document.getElementById('salary-name').value = '';
+        document.getElementById('salary-amount').value = '';
+        const toast = document.createElement('div'); toast.className = 'toast success'; toast.innerHTML = `✅ Salaire ajouté : ${name}`; document.body.appendChild(toast); setTimeout(() => toast.remove(), 4000);
     });
 
-    // Cash Flow: Add Planned Expense
-    document.querySelector('.btn-add-planned')?.addEventListener('click', () => {
-        const desc = prompt('Description (ex: Design UI Module CRM) :');
-        if (!desc) return;
-        const freelancer = prompt('Nom du freelancer (optionnel) :') || '';
-        const amount = parseFloat(prompt('Montant estimé ($) :'));
-        if (isNaN(amount) || amount <= 0) return;
-        const dueDate = prompt('Date d\'échéance (AAAA-MM-JJ) :') || '';
+    // ===== MODAL: Planned Expense (Freelancer) =====
+    const plannedModal = document.getElementById('modal-planned-overlay');
+    const openPlanned = () => {
+        // Populate project dropdown
+        const sel = document.getElementById('planned-project');
+        if (sel) {
+            sel.innerHTML = '<option value="">— Aucun projet —</option>' +
+                (appData.salesLog || []).map(s => {
+                    const label = s.type === 'custom' ? (s.projectName || s.clientName) : `${s.clientName} (${s.type})`;
+                    return `<option value="${s.id}">${label} — ${formatCurrency(s.revenue)}</option>`;
+                }).join('');
+        }
+        plannedModal.classList.add('open');
+    };
+    const closePlanned = () => { plannedModal.classList.remove('open'); };
+    document.querySelector('.btn-add-planned')?.addEventListener('click', openPlanned);
+    document.getElementById('modal-planned-close')?.addEventListener('click', closePlanned);
+    document.getElementById('modal-planned-cancel')?.addEventListener('click', closePlanned);
+    plannedModal?.querySelector('.modal-footer .btn-primary')?.addEventListener('click', () => {
+        const desc = document.getElementById('planned-desc').value.trim();
+        const amount = parseFloat(document.getElementById('planned-amount').value);
+        if (!desc || isNaN(amount) || amount <= 0) { alert('Veuillez remplir la description et le montant.'); return; }
         appData.cashflow.plannedExpenses.push({
             id: 'plan_' + Date.now(),
             description: desc,
-            projectId: null,
-            freelancerName: freelancer,
+            projectId: document.getElementById('planned-project').value || null,
+            freelancerName: document.getElementById('planned-freelancer').value.trim(),
             estimatedAmount: amount,
-            dueDate: dueDate,
+            dueDate: document.getElementById('planned-duedate').value || '',
             status: 'à_venir',
             paidDate: null
         });
-        saveData();
+        saveData(); closePlanned();
+        document.getElementById('planned-desc').value = '';
+        document.getElementById('planned-freelancer').value = '';
+        document.getElementById('planned-amount').value = '';
+        document.getElementById('planned-duedate').value = '';
+        const toast = document.createElement('div'); toast.className = 'toast success'; toast.innerHTML = `✅ Facture prévue ajoutée : ${desc}`; document.body.appendChild(toast); setTimeout(() => toast.remove(), 4000);
     });
 
-    // Projects: Add Expense to Project
-    document.getElementById('btn-add-expense')?.addEventListener('click', () => {
-        const projects = appData.salesLog || [];
-        if (projects.length === 0) { alert('Aucun projet existant.'); return; }
-        const projList = projects.map((p, i) => `${i+1}. ${p.clientName} — ${p.projectName || p.type} (${formatCurrency(p.revenue)})`).join('\n');
-        const idx = parseInt(prompt('Choisir le projet (numéro) :\n' + projList)) - 1;
-        if (isNaN(idx) || idx < 0 || idx >= projects.length) return;
-        const desc = prompt('Description de la dépense :');
-        if (!desc) return;
-        const amount = parseFloat(prompt('Montant ($) :'));
-        if (isNaN(amount) || amount <= 0) return;
-        const category = prompt('Catégorie (freelancer, outil, autre) :') || 'autre';
-        if (!projects[idx].expenses) projects[idx].expenses = [];
-        projects[idx].expenses.push({
+    // ===== MODAL: Project Expense =====
+    const expenseModal = document.getElementById('modal-expense-overlay');
+    const openExpense = () => {
+        // Populate project dropdown
+        const sel = document.getElementById('expense-project');
+        if (sel) {
+            sel.innerHTML = (appData.salesLog || []).map(s => {
+                const label = s.type === 'custom' ? (s.projectName || s.clientName) : `${s.clientName} (${s.type})`;
+                return `<option value="${s.id}">${label} — ${formatCurrency(s.revenue)}</option>`;
+            }).join('');
+        }
+        document.getElementById('expense-date').value = TODAY_STR;
+        expenseModal.classList.add('open');
+    };
+    const closeExpense = () => { expenseModal.classList.remove('open'); };
+    document.getElementById('btn-add-expense')?.addEventListener('click', openExpense);
+    document.getElementById('modal-expense-close')?.addEventListener('click', closeExpense);
+    document.getElementById('modal-expense-cancel')?.addEventListener('click', closeExpense);
+
+    // Show/hide freelancer name based on category
+    document.getElementById('expense-category')?.addEventListener('change', (e) => {
+        document.getElementById('expense-freelancer-group').style.display = e.target.value === 'freelancer' ? 'block' : 'none';
+    });
+
+    expenseModal?.querySelector('.modal-footer .btn-primary')?.addEventListener('click', () => {
+        const projId = document.getElementById('expense-project').value;
+        const desc = document.getElementById('expense-desc').value.trim();
+        const amount = parseFloat(document.getElementById('expense-amount').value);
+        if (!desc || isNaN(amount) || amount <= 0) { alert('Veuillez remplir la description et le montant.'); return; }
+        const sale = appData.salesLog.find(s => s.id === projId);
+        if (!sale) { alert('Veuillez sélectionner un projet.'); return; }
+        if (!sale.expenses) sale.expenses = [];
+        sale.expenses.push({
             id: 'exp_' + Date.now(),
-            date: TODAY_STR,
+            date: document.getElementById('expense-date').value || TODAY_STR,
             description: desc,
-            category: category,
+            category: document.getElementById('expense-category').value,
             amount: amount,
-            freelancerName: category === 'freelancer' ? (prompt('Nom du freelancer :') || '') : ''
+            freelancerName: document.getElementById('expense-category').value === 'freelancer' ? document.getElementById('expense-freelancer').value.trim() : ''
         });
-        saveData();
+        saveData(); closeExpense();
+        document.getElementById('expense-desc').value = '';
+        document.getElementById('expense-amount').value = '';
+        document.getElementById('expense-freelancer').value = '';
+        const toast = document.createElement('div'); toast.className = 'toast success'; toast.innerHTML = `✅ Dépense ajoutée au projet : ${desc}`; document.body.appendChild(toast); setTimeout(() => toast.remove(), 4000);
     });
 
     // Trigger async data fetch

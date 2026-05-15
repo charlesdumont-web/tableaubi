@@ -676,7 +676,177 @@
     </div>
   </div>
 
+  <!-- Modal: Dépense Récurrente -->
+  <div class="modal-overlay" id="modal-recurring-overlay">
+    <div class="modal" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2>🔄 Nouvelle Dépense Récurrente</h2>
+        <button class="modal-close" id="modal-recurring-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label">Nom de la dépense</label>
+          <input type="text" id="recurring-name" class="form-input" placeholder="Ex: Bureau WeWork, Abonnement HubSpot...">
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Montant ($)</label>
+            <input type="number" id="recurring-amount" class="form-input" placeholder="Ex: 2500" min="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Catégorie</label>
+            <select id="recurring-category" class="form-select">
+              <option value="loyer">🏢 Loyer / Bureau</option>
+              <option value="logiciel">💻 Logiciel / SaaS</option>
+              <option value="assurance">🛡️ Assurance</option>
+              <option value="telecom">📱 Télécom / Internet</option>
+              <option value="marketing">📣 Marketing</option>
+              <option value="autre">📦 Autre</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:16px;">
+          <label class="form-label">Fréquence</label>
+          <select id="recurring-frequency" class="form-select">
+            <option value="monthly">Mensuel</option>
+            <option value="biweekly">Aux 2 semaines</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="modal-recurring-cancel">Annuler</button>
+        <button class="btn btn-primary">💾 Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Salaire -->
+  <div class="modal-overlay" id="modal-salary-overlay">
+    <div class="modal" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2>👤 Nouveau Salaire</h2>
+        <button class="modal-close" id="modal-salary-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label">Nom de l'employé</label>
+          <input type="text" id="salary-name" class="form-input" placeholder="Ex: Yassine, Patrick...">
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Montant par paie ($)</label>
+            <input type="number" id="salary-amount" class="form-input" placeholder="Ex: 2000" min="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fréquence</label>
+            <select id="salary-frequency" class="form-select">
+              <option value="biweekly" selected>Aux 2 semaines</option>
+              <option value="monthly">Mensuel</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:16px; padding:12px; background:rgba(59,130,246,0.04); border-radius:var(--radius-sm); border:1px dashed var(--border-color); font-size:13px; color:var(--text-muted);">
+          💡 Le système calculera automatiquement le coût mensuel estimé (×2.17 pour les paies aux 2 semaines).
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="modal-salary-cancel">Annuler</button>
+        <button class="btn btn-primary">💾 Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Facture Freelancer -->
+  <div class="modal-overlay" id="modal-planned-overlay">
+    <div class="modal" style="max-width: 550px;">
+      <div class="modal-header">
+        <h2>📋 Nouvelle Facture à Prévoir</h2>
+        <button class="modal-close" id="modal-planned-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label">Description de la facture</label>
+          <input type="text" id="planned-desc" class="form-input" placeholder="Ex: Design UI Module CRM, Développement API...">
+        </div>
+        <div class="form-grid" style="margin-bottom:16px;">
+          <div class="form-group">
+            <label class="form-label">Nom du freelancer</label>
+            <input type="text" id="planned-freelancer" class="form-input" placeholder="Ex: Contracteur X">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Montant estimé ($)</label>
+            <input type="number" id="planned-amount" class="form-input" placeholder="Ex: 5000" min="0">
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Projet lié (optionnel)</label>
+            <select id="planned-project" class="form-select">
+              <option value="">— Aucun projet —</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Date d'échéance</label>
+            <input type="date" id="planned-duedate" class="form-input">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="modal-planned-cancel">Annuler</button>
+        <button class="btn btn-primary" style="background:var(--warning);border-color:var(--warning);">📋 Enregistrer la Prévision</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Dépense Projet -->
+  <div class="modal-overlay" id="modal-expense-overlay">
+    <div class="modal" style="max-width: 550px;">
+      <div class="modal-header">
+        <h2>💸 Nouvelle Dépense de Projet</h2>
+        <button class="modal-close" id="modal-expense-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label">Projet concerné</label>
+          <select id="expense-project" class="form-select">
+            <!-- Populated dynamically -->
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label">Description</label>
+          <input type="text" id="expense-desc" class="form-input" placeholder="Ex: Heures freelancer Figma, Licence outil...">
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Montant ($)</label>
+            <input type="number" id="expense-amount" class="form-input" placeholder="Ex: 1500" min="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Catégorie</label>
+            <select id="expense-category" class="form-select">
+              <option value="freelancer">👤 Freelancer</option>
+              <option value="outil">🔧 Outil / Licence</option>
+              <option value="autre">📦 Autre</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:16px;" id="expense-freelancer-group">
+          <label class="form-label">Nom du freelancer</label>
+          <input type="text" id="expense-freelancer" class="form-input" placeholder="Ex: Yassine">
+        </div>
+        <div class="form-group" style="margin-top:16px;">
+          <label class="form-label">Date</label>
+          <input type="date" id="expense-date" class="form-input">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="modal-expense-cancel">Annuler</button>
+        <button class="btn btn-primary" style="background:var(--danger);border-color:var(--danger);">💸 Enregistrer la Dépense</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <script src="app.js?v=12"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>
