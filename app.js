@@ -128,11 +128,40 @@ async function initData() {
     if(!appData.subscriptions) appData.subscriptions = [];
     if(!appData.salesLog) appData.salesLog = [];
     if(!appData.collectionsLog) appData.collectionsLog = [];
+    if(!appData.clients) appData.clients = [];
+    if(!appData.cashflow) appData.cashflow = { recurringExpenses: [], salaries: [], plannedExpenses: [] };
     
     // Ensure all existing sales have the 'collected' attribute and an 'id' for backwards compatibility
     appData.salesLog.forEach(sale => {
         if (!sale.id) sale.id = 'legacy_' + Math.random().toString(36).substr(2, 9);
         if (sale.collected === undefined) sale.collected = sale.frontend || 0;
+        if (!sale.expenses) sale.expenses = [];
+        if (!sale.status) sale.status = (sale.revenue > 0 && sale.collected >= sale.revenue) ? 'terminé' : 'en_cours';
+    });
+
+    // --- CRM Migration: Create client entries from existing salesLog ---
+    if(appData.clients.length === 0 && appData.salesLog.length > 0) {
+        const uniqueNames = [...new Set(appData.salesLog.map(s => s.clientName).filter(Boolean))];
+        uniqueNames.forEach(name => {
+            const firstSale = appData.salesLog.filter(s => s.clientName === name).sort((a,b) => a.date.localeCompare(b.date))[0];
+            appData.clients.push({
+                id: 'cli_' + Math.random().toString(36).substr(2, 9),
+                name: name,
+                email: '',
+                phone: '',
+                notes: '',
+                createdAt: firstSale ? firstSale.date : TODAY_STR,
+                tags: []
+            });
+        });
+    }
+
+    // Link salesLog entries to clients by clientId
+    appData.salesLog.forEach(sale => {
+        if (!sale.clientId) {
+            const client = appData.clients.find(c => c.name.toLowerCase() === (sale.clientName || '').toLowerCase());
+            if (client) sale.clientId = client.id;
+        }
     });
     
     // Hide loading screen
@@ -970,18 +999,22 @@ function initNewSaleModal() {
             });
         }
 
-        // Save to sales log
+        // Save to sales log — link to CRM client
         const projName = saleType === 'custom' ? document.getElementById('sale-project-name').value : '';
+        const client = getOrCreateClient(clientName);
         appData.salesLog.push({
             id: 'sale_' + Date.now(),
             date: saleDate,
             clientName: clientName,
+            clientId: client ? client.id : null,
             type: saleType,
             projectName: projName,
             revenue: revVal,
             frontend: frontVal,
             collected: frontVal,
-            milestones: milestones
+            milestones: milestones,
+            expenses: [],
+            status: 'en_cours'
         });
 
         // Find KPIs to update
@@ -1306,6 +1339,371 @@ function renderReceivables() {
     }
 }
 
+// --- CRM: Clients ---
+function getClientName(clientId) {
+    const c = (appData.clients || []).find(c => c.id === clientId);
+    return c ? c.name : '—';
+}
+
+function getOrCreateClient(name) {
+    if (!name) return null;
+    let client = appData.clients.find(c => c.name.toLowerCase() === name.toLowerCase());
+    if (!client) {
+        client = {
+            id: 'cli_' + Date.now() + Math.floor(Math.random() * 1000),
+            name: name,
+            email: '',
+            phone: '',
+            notes: '',
+            createdAt: TODAY_STR,
+            tags: []
+        };
+        appData.clients.push(client);
+    }
+    return client;
+}
+
+function populateClientDatalist() {
+    const dl = document.getElementById('datalist-clients');
+    if (!dl) return;
+    dl.innerHTML = (appData.clients || []).map(c => `<option value="${c.name}">`).join('');
+}
+
+function renderClients() {
+    const tbody = document.getElementById('clients-tbody');
+    const cardsEl = document.getElementById('clients-summary-cards');
+    if (!tbody) return;
+
+    const clients = appData.clients || [];
+    const sales = appData.salesLog || [];
+
+    // Summary cards
+    const totalClients = clients.length;
+    const activeClients = clients.filter(c => {
+        return sales.some(s => s.clientId === c.id && s.status === 'en_cours');
+    }).length;
+    const totalRevenue = sales.reduce((a, s) => a + (s.revenue || 0), 0);
+
+    if (cardsEl) {
+        cardsEl.innerHTML = `
+            <div class="kpi-summary-card blue">
+                <div class="kpi-card-header"><div class="icon-wrap blue">👥</div></div>
+                <div class="kpi-card-label">Total Clients</div>
+                <div class="kpi-card-value">${totalClients}</div>
+            </div>
+            <div class="kpi-summary-card green">
+                <div class="kpi-card-header"><div class="icon-wrap green">✅</div></div>
+                <div class="kpi-card-label">Clients Actifs</div>
+                <div class="kpi-card-value">${activeClients}</div>
+            </div>
+            <div class="kpi-summary-card cyan">
+                <div class="kpi-card-header"><div class="icon-wrap cyan">💰</div></div>
+                <div class="kpi-card-label">Revenu Total Clients</div>
+                <div class="kpi-card-value">${formatCurrency(totalRevenue)}</div>
+            </div>
+        `;
+    }
+
+    // Search filter
+    const searchVal = (document.getElementById('clients-search')?.value || '').toLowerCase();
+
+    const filtered = clients.filter(c => c.name.toLowerCase().includes(searchVal));
+
+    tbody.innerHTML = filtered.map(client => {
+        const clientSales = sales.filter(s => s.clientId === client.id);
+        const rev = clientSales.reduce((a, s) => a + (s.revenue || 0), 0);
+        const col = clientSales.reduce((a, s) => a + (s.collected || 0), 0);
+        const bal = rev - col;
+        const hasActive = clientSales.some(s => s.status === 'en_cours');
+        const statusBadge = hasActive
+            ? '<span class="status-badge good">Actif</span>'
+            : '<span class="status-badge">Inactif</span>';
+
+        return `
+            <tr style="cursor:pointer;" onclick="window.showClientDetail('${client.id}')">
+                <td style="font-weight:600;">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;color:white;font-size:13px;font-weight:700;">${client.name.charAt(0).toUpperCase()}</div>
+                        ${client.name}
+                    </div>
+                </td>
+                <td class="value-cell">${clientSales.length}</td>
+                <td class="value-cell">${formatCurrency(rev)}</td>
+                <td class="value-cell text-success">${formatCurrency(col)}</td>
+                <td class="value-cell" style="color:${bal > 0 ? 'var(--warning)' : 'var(--text-muted)'};">${formatCurrency(bal)}</td>
+                <td>${statusBadge}</td>
+                <td class="value-cell" style="font-size:12px;">${client.createdAt}</td>
+            </tr>
+        `;
+    }).join('');
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted);">Aucun client trouvé</td></tr>';
+    }
+
+    populateClientDatalist();
+}
+
+window.showClientDetail = function(clientId) {
+    const client = appData.clients.find(c => c.id === clientId);
+    if (!client) return;
+
+    document.getElementById('clients-list-view').style.display = 'none';
+    document.getElementById('client-detail-view').style.display = 'block';
+
+    document.getElementById('client-avatar').innerText = client.name.charAt(0).toUpperCase();
+    document.getElementById('client-detail-name').innerText = client.name;
+    document.getElementById('client-detail-since').innerText = `Client depuis ${formatDisplayDate(client.createdAt)}`;
+
+    const clientSales = appData.salesLog.filter(s => s.clientId === clientId);
+    const rev = clientSales.reduce((a, s) => a + (s.revenue || 0), 0);
+    const col = clientSales.reduce((a, s) => a + (s.collected || 0), 0);
+    const exp = clientSales.reduce((a, s) => a + (s.expenses || []).reduce((b, e) => b + (e.amount || 0), 0), 0);
+
+    document.getElementById('client-detail-cards').innerHTML = `
+        <div class="kpi-summary-card cyan">
+            <div class="kpi-card-header"><div class="icon-wrap cyan">💰</div></div>
+            <div class="kpi-card-label">Revenu Total</div>
+            <div class="kpi-card-value">${formatCurrency(rev)}</div>
+        </div>
+        <div class="kpi-summary-card green">
+            <div class="kpi-card-header"><div class="icon-wrap green">✅</div></div>
+            <div class="kpi-card-label">Encaissé</div>
+            <div class="kpi-card-value">${formatCurrency(col)}</div>
+        </div>
+        <div class="kpi-summary-card purple">
+            <div class="kpi-card-header"><div class="icon-wrap purple">📊</div></div>
+            <div class="kpi-card-label">Dépenses</div>
+            <div class="kpi-card-value">${formatCurrency(exp)}</div>
+        </div>
+    `;
+
+    const dtbody = document.getElementById('client-detail-projects-tbody');
+    dtbody.innerHTML = clientSales.map(s => {
+        const bal = s.revenue - s.collected;
+        const projName = s.type === 'custom' ? (s.projectName || '—') : (s.type === 'audit' ? 'Audit IA' : 'Téléphonie IA');
+        let typeBadge = '';
+        if (s.type === 'audit') typeBadge = '<span class="status-badge warning">Audit</span>';
+        else if (s.type === 'telephonie') typeBadge = '<span class="status-badge good">Téléphonie</span>';
+        else typeBadge = '<span class="status-badge">Sur Mesure</span>';
+        const statusBadge = s.status === 'terminé' ? '<span class="status-badge good">Terminé</span>' : '<span class="status-badge warning">En cours</span>';
+        return `
+            <tr>
+                <td class="value-cell">${s.date}</td>
+                <td style="font-weight:600;">${projName}</td>
+                <td>${typeBadge}</td>
+                <td class="value-cell">${formatCurrency(s.revenue)}</td>
+                <td class="value-cell text-success">${formatCurrency(s.collected)}</td>
+                <td class="value-cell" style="color:var(--warning);">${formatCurrency(bal)}</td>
+                <td>${statusBadge}</td>
+            </tr>
+        `;
+    }).join('');
+
+    if (clientSales.length === 0) {
+        dtbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted);">Aucun projet pour ce client</td></tr>';
+    }
+};
+
+// --- Projects ---
+function renderProjects() {
+    const tbody = document.getElementById('projects-tbody');
+    const tfoot = document.getElementById('projects-tfoot');
+    const cardsEl = document.getElementById('projects-summary-cards');
+    if (!tbody) return;
+
+    const sales = appData.salesLog || [];
+    
+    let totalRev = 0, totalExp = 0, totalProfit = 0, activeCount = 0;
+
+    const rows = sales.map(s => {
+        const clientName = s.clientId ? getClientName(s.clientId) : (s.clientName || '—');
+        const projName = s.type === 'custom' ? (s.projectName || '—') : (s.type === 'audit' ? 'Audit IA' : 'Téléphonie IA');
+        const expenses = (s.expenses || []).reduce((a, e) => a + (e.amount || 0), 0);
+        const profit = s.revenue - expenses;
+        const margin = s.revenue > 0 ? Math.round((profit / s.revenue) * 100) : 0;
+        const pctCollected = s.revenue > 0 ? Math.round((s.collected / s.revenue) * 100) : 0;
+
+        totalRev += s.revenue;
+        totalExp += expenses;
+        totalProfit += profit;
+        if (s.status === 'en_cours') activeCount++;
+
+        let typeBadge = '';
+        if (s.type === 'audit') typeBadge = '<span class="status-badge warning">Audit</span>';
+        else if (s.type === 'telephonie') typeBadge = '<span class="status-badge good">Téléphonie</span>';
+        else typeBadge = '<span class="status-badge">Sur Mesure</span>';
+
+        const statusBadge = s.status === 'terminé'
+            ? '<span class="status-badge good">Terminé</span>'
+            : s.status === 'en_pause'
+            ? '<span class="status-badge">En pause</span>'
+            : '<span class="status-badge warning">En cours</span>';
+
+        return `
+            <tr>
+                <td style="font-weight:600;">${clientName}</td>
+                <td>${projName}</td>
+                <td>${typeBadge}</td>
+                <td class="value-cell">${formatCurrency(s.revenue)}</td>
+                <td class="value-cell" style="color:var(--danger);">${expenses > 0 ? formatCurrency(expenses) : '—'}</td>
+                <td class="value-cell" style="font-weight:700; color:${profit >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatCurrency(profit)}</td>
+                <td class="value-cell">${margin}%</td>
+                <td class="value-cell">${pctCollected}%</td>
+                <td>${statusBadge}</td>
+            </tr>
+        `;
+    }).join('');
+
+    tbody.innerHTML = rows || '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text-muted);">Aucun projet</td></tr>';
+
+    const avgMargin = totalRev > 0 ? Math.round((totalProfit / totalRev) * 100) : 0;
+    if (tfoot && sales.length > 0) {
+        tfoot.innerHTML = `
+            <tr style="font-weight:700; background:rgba(0,51,153,0.04); border-top:2px solid var(--border-color);">
+                <td colspan="3">TOTAL (${sales.length} projets)</td>
+                <td class="value-cell">${formatCurrency(totalRev)}</td>
+                <td class="value-cell" style="color:var(--danger);">${formatCurrency(totalExp)}</td>
+                <td class="value-cell" style="color:var(--success);">${formatCurrency(totalProfit)}</td>
+                <td class="value-cell">${avgMargin}%</td>
+                <td colspan="2"></td>
+            </tr>
+        `;
+    }
+
+    if (cardsEl) {
+        cardsEl.innerHTML = `
+            <div class="kpi-summary-card green">
+                <div class="kpi-card-header"><div class="icon-wrap green">📁</div></div>
+                <div class="kpi-card-label">Projets Actifs</div>
+                <div class="kpi-card-value">${activeCount}</div>
+            </div>
+            <div class="kpi-summary-card cyan">
+                <div class="kpi-card-header"><div class="icon-wrap cyan">💰</div></div>
+                <div class="kpi-card-label">Profit Total</div>
+                <div class="kpi-card-value">${formatCurrency(totalProfit)}</div>
+            </div>
+            <div class="kpi-summary-card purple">
+                <div class="kpi-card-header"><div class="icon-wrap purple">📊</div></div>
+                <div class="kpi-card-label">Marge Moyenne</div>
+                <div class="kpi-card-value">${avgMargin}%</div>
+            </div>
+            <div class="kpi-summary-card blue">
+                <div class="kpi-card-header"><div class="icon-wrap blue">💸</div></div>
+                <div class="kpi-card-label">Dépenses Totales</div>
+                <div class="kpi-card-value">${formatCurrency(totalExp)}</div>
+            </div>
+        `;
+    }
+}
+
+// --- Cash Flow ---
+function renderCashFlow() {
+    const cf = appData.cashflow || { recurringExpenses: [], salaries: [], plannedExpenses: [] };
+    
+    // Recurring expenses
+    const recTbody = document.getElementById('recurring-tbody');
+    if (recTbody) {
+        recTbody.innerHTML = cf.recurringExpenses.map(r => {
+            const freqLabel = r.frequency === 'monthly' ? 'Mensuel' : 'Aux 2 sem.';
+            const statusBadge = r.active ? '<span class="status-badge good">Actif</span>' : '<span class="status-badge">Inactif</span>';
+            return `<tr>
+                <td style="font-weight:600;">${r.name}</td>
+                <td>${r.category || '—'}</td>
+                <td class="value-cell">${formatCurrency(r.amount)}</td>
+                <td>${freqLabel}</td>
+                <td>${statusBadge}</td>
+                <td><button class="btn btn-ghost" onclick="window.deleteRecurring('${r.id}')" style="color:var(--danger);padding:4px 8px;font-size:12px;">🗑️</button></td>
+            </tr>`;
+        }).join('') || '<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--text-muted);">Aucune dépense récurrente</td></tr>';
+    }
+
+    // Salaries
+    const salTbody = document.getElementById('salaries-tbody');
+    if (salTbody) {
+        salTbody.innerHTML = cf.salaries.map(s => {
+            const freqLabel = s.frequency === 'monthly' ? 'Mensuel' : 'Aux 2 sem.';
+            const statusBadge = s.active ? '<span class="status-badge good">Actif</span>' : '<span class="status-badge">Inactif</span>';
+            return `<tr>
+                <td style="font-weight:600;">${s.employeeName}</td>
+                <td class="value-cell">${formatCurrency(s.amount)}</td>
+                <td>${freqLabel}</td>
+                <td>${statusBadge}</td>
+                <td><button class="btn btn-ghost" onclick="window.deleteSalary('${s.id}')" style="color:var(--danger);padding:4px 8px;font-size:12px;">🗑️</button></td>
+            </tr>`;
+        }).join('') || '<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--text-muted);">Aucun salaire enregistré</td></tr>';
+    }
+
+    // Planned expenses
+    const planTbody = document.getElementById('planned-tbody');
+    if (planTbody) {
+        planTbody.innerHTML = cf.plannedExpenses.map(p => {
+            const proj = appData.salesLog.find(s => s.id === p.projectId);
+            const projLabel = proj ? (proj.projectName || proj.clientName) : '—';
+            const statusBadge = p.status === 'payé' ? '<span class="status-badge good">Payé</span>' : '<span class="status-badge warning">À venir</span>';
+            return `<tr>
+                <td style="font-weight:600;">${p.description}</td>
+                <td>${projLabel}</td>
+                <td>${p.freelancerName || '—'}</td>
+                <td class="value-cell">${formatCurrency(p.estimatedAmount)}</td>
+                <td class="value-cell">${p.dueDate || '—'}</td>
+                <td>${statusBadge}</td>
+                <td><button class="btn btn-ghost" onclick="window.deletePlanned('${p.id}')" style="color:var(--danger);padding:4px 8px;font-size:12px;">🗑️</button></td>
+            </tr>`;
+        }).join('') || '<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text-muted);">Aucune facture planifiée</td></tr>';
+    }
+
+    // Summary cards
+    const cardsEl = document.getElementById('cashflow-summary-cards');
+    if (cardsEl) {
+        const monthlyRecurring = cf.recurringExpenses.filter(r => r.active).reduce((a, r) => {
+            return a + (r.frequency === 'monthly' ? r.amount : r.amount * 2.17);
+        }, 0);
+        const monthlySalaries = cf.salaries.filter(s => s.active).reduce((a, s) => {
+            return a + (s.frequency === 'monthly' ? s.amount : s.amount * 2.17);
+        }, 0);
+        const pendingFreelancer = cf.plannedExpenses.filter(p => p.status !== 'payé').reduce((a, p) => a + (p.estimatedAmount || 0), 0);
+        const totalMonthly = monthlyRecurring + monthlySalaries;
+
+        cardsEl.innerHTML = `
+            <div class="kpi-summary-card blue">
+                <div class="kpi-card-header"><div class="icon-wrap blue">🔄</div></div>
+                <div class="kpi-card-label">Dépenses Fixes / Mois</div>
+                <div class="kpi-card-value">${formatCurrency(monthlyRecurring)}</div>
+            </div>
+            <div class="kpi-summary-card purple">
+                <div class="kpi-card-header"><div class="icon-wrap purple">👤</div></div>
+                <div class="kpi-card-label">Salaires / Mois</div>
+                <div class="kpi-card-value">${formatCurrency(monthlySalaries)}</div>
+            </div>
+            <div class="kpi-summary-card cyan">
+                <div class="kpi-card-header"><div class="icon-wrap cyan">📋</div></div>
+                <div class="kpi-card-label">Freelancers à prévoir</div>
+                <div class="kpi-card-value">${formatCurrency(pendingFreelancer)}</div>
+            </div>
+            <div class="kpi-summary-card green">
+                <div class="kpi-card-header"><div class="icon-wrap green">💸</div></div>
+                <div class="kpi-card-label">Total Sorties / Mois</div>
+                <div class="kpi-card-value" style="color:var(--danger);">${formatCurrency(totalMonthly)}</div>
+            </div>
+        `;
+    }
+}
+
+// Cash flow CRUD helpers
+window.deleteRecurring = async function(id) {
+    appData.cashflow.recurringExpenses = appData.cashflow.recurringExpenses.filter(r => r.id !== id);
+    saveData();
+};
+window.deleteSalary = async function(id) {
+    appData.cashflow.salaries = appData.cashflow.salaries.filter(s => s.id !== id);
+    saveData();
+};
+window.deletePlanned = async function(id) {
+    appData.cashflow.plannedExpenses = appData.cashflow.plannedExpenses.filter(p => p.id !== id);
+    saveData();
+};
+
 // --- Init ---
 function updateUI() {
     calculateDerivedKPIs();
@@ -1315,6 +1713,9 @@ function updateUI() {
     renderCharts();
     renderHistoryTable();
     renderReceivables();
+    renderClients();
+    renderProjects();
+    renderCashFlow();
 }
 
 function initDateFilter() {
@@ -1605,6 +2006,94 @@ document.addEventListener('DOMContentLoaded', () => {
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a"); link.setAttribute("href", URL.createObjectURL(blob)); link.setAttribute("download", "synchroia_kpis_historique.csv"); link.style.visibility = 'hidden'; document.body.appendChild(link); link.click(); document.body.removeChild(link);
     });
+
+    // CRM: Back to client list
+    document.getElementById('btn-back-clients')?.addEventListener('click', () => {
+        document.getElementById('client-detail-view').style.display = 'none';
+        document.getElementById('clients-list-view').style.display = 'block';
+    });
+
+    // CRM: Client search
+    document.getElementById('clients-search')?.addEventListener('input', () => renderClients());
+
+    // Cash Flow: Add Recurring Expense
+    document.querySelector('.btn-add-recurring')?.addEventListener('click', () => {
+        const name = prompt('Nom de la dépense (ex: Bureau WeWork) :');
+        if (!name) return;
+        const amount = parseFloat(prompt('Montant ($) :'));
+        if (isNaN(amount) || amount <= 0) return;
+        const category = prompt('Catégorie (loyer, logiciel, assurance, autre) :') || 'autre';
+        const frequency = prompt('Fréquence (monthly ou biweekly) :') || 'monthly';
+        appData.cashflow.recurringExpenses.push({
+            id: 'rec_' + Date.now(),
+            name, amount, category,
+            frequency: frequency === 'biweekly' ? 'biweekly' : 'monthly',
+            active: true
+        });
+        saveData();
+    });
+
+    // Cash Flow: Add Salary
+    document.querySelector('.btn-add-salary')?.addEventListener('click', () => {
+        const name = prompt('Nom de l\'employé :');
+        if (!name) return;
+        const amount = parseFloat(prompt('Montant par paie ($) :'));
+        if (isNaN(amount) || amount <= 0) return;
+        const frequency = prompt('Fréquence (monthly ou biweekly) :') || 'biweekly';
+        appData.cashflow.salaries.push({
+            id: 'sal_' + Date.now(),
+            employeeName: name, amount,
+            frequency: frequency === 'monthly' ? 'monthly' : 'biweekly',
+            active: true
+        });
+        saveData();
+    });
+
+    // Cash Flow: Add Planned Expense
+    document.querySelector('.btn-add-planned')?.addEventListener('click', () => {
+        const desc = prompt('Description (ex: Design UI Module CRM) :');
+        if (!desc) return;
+        const freelancer = prompt('Nom du freelancer (optionnel) :') || '';
+        const amount = parseFloat(prompt('Montant estimé ($) :'));
+        if (isNaN(amount) || amount <= 0) return;
+        const dueDate = prompt('Date d\'échéance (AAAA-MM-JJ) :') || '';
+        appData.cashflow.plannedExpenses.push({
+            id: 'plan_' + Date.now(),
+            description: desc,
+            projectId: null,
+            freelancerName: freelancer,
+            estimatedAmount: amount,
+            dueDate: dueDate,
+            status: 'à_venir',
+            paidDate: null
+        });
+        saveData();
+    });
+
+    // Projects: Add Expense to Project
+    document.getElementById('btn-add-expense')?.addEventListener('click', () => {
+        const projects = appData.salesLog || [];
+        if (projects.length === 0) { alert('Aucun projet existant.'); return; }
+        const projList = projects.map((p, i) => `${i+1}. ${p.clientName} — ${p.projectName || p.type} (${formatCurrency(p.revenue)})`).join('\n');
+        const idx = parseInt(prompt('Choisir le projet (numéro) :\n' + projList)) - 1;
+        if (isNaN(idx) || idx < 0 || idx >= projects.length) return;
+        const desc = prompt('Description de la dépense :');
+        if (!desc) return;
+        const amount = parseFloat(prompt('Montant ($) :'));
+        if (isNaN(amount) || amount <= 0) return;
+        const category = prompt('Catégorie (freelancer, outil, autre) :') || 'autre';
+        if (!projects[idx].expenses) projects[idx].expenses = [];
+        projects[idx].expenses.push({
+            id: 'exp_' + Date.now(),
+            date: TODAY_STR,
+            description: desc,
+            category: category,
+            amount: amount,
+            freelancerName: category === 'freelancer' ? (prompt('Nom du freelancer :') || '') : ''
+        });
+        saveData();
+    });
+
     // Trigger async data fetch
     initData();
 });

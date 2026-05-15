@@ -49,6 +49,16 @@
         <div class="nav-item" data-section="client" id="nav-client">
           <span class="icon">🤝</span> Client Success
         </div>
+        <div class="nav-section-title">Gestion</div>
+        <div class="nav-item" data-section="clients" id="nav-clients">
+          <span class="icon">👤</span> Clients
+        </div>
+        <div class="nav-item" data-section="projects" id="nav-projects">
+          <span class="icon">📁</span> Projets
+        </div>
+        <div class="nav-item" data-section="cashflow" id="nav-cashflow">
+          <span class="icon">💸</span> Prévisions Cash
+        </div>
         <div class="nav-section-title">Outils</div>
         <div class="nav-item" data-section="history" id="nav-history">
           <span class="icon">📜</span> Transactions
@@ -244,6 +254,168 @@
           </div>
         </section>
 
+        <!-- ===== CLIENTS CRM ===== -->
+        <section class="section" id="section-clients">
+          <div class="dept-header">
+            <div class="dept-icon" style="background:rgba(99,102,241,0.1);color:#6366f1;">👤</div>
+            <div class="dept-info">
+              <h2>Répertoire Clients</h2>
+              <p>Gestion centralisée de vos clients et de leurs projets</p>
+            </div>
+          </div>
+          <div class="kpi-summary-grid" id="clients-summary-cards"></div>
+          
+          <!-- Client List View -->
+          <div id="clients-list-view">
+            <div class="data-table-card">
+              <div class="data-table-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <h3>👥 Tous les clients</h3>
+                <input type="text" id="clients-search" class="form-input" placeholder="🔍 Rechercher un client..." style="width:250px; padding:6px 12px; font-size:13px;">
+              </div>
+              <div style="overflow-x:auto;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Client</th>
+                      <th>Projets</th>
+                      <th>Revenu Total</th>
+                      <th>Encaissé</th>
+                      <th>Balance</th>
+                      <th>Statut</th>
+                      <th>Depuis</th>
+                    </tr>
+                  </thead>
+                  <tbody id="clients-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Client Detail View (hidden by default) -->
+          <div id="client-detail-view" style="display:none;">
+            <div style="margin-bottom:16px;">
+              <button class="btn btn-secondary" id="btn-back-clients" style="font-size:13px;">← Retour aux clients</button>
+            </div>
+            <div class="data-table-card" style="margin-bottom:16px; padding:24px;">
+              <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
+                <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;color:white;font-size:20px;font-weight:700;" id="client-avatar">A</div>
+                <div>
+                  <h2 id="client-detail-name" style="margin:0;">Nom du client</h2>
+                  <p id="client-detail-since" style="margin:0;color:var(--text-muted);font-size:13px;">Client depuis...</p>
+                </div>
+              </div>
+              <div class="kpi-summary-grid" id="client-detail-cards"></div>
+            </div>
+            <div class="data-table-card">
+              <div class="data-table-header"><h3>📁 Projets de ce client</h3></div>
+              <div style="overflow-x:auto;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Projet</th>
+                      <th>Type</th>
+                      <th>Revenu</th>
+                      <th>Encaissé</th>
+                      <th>Balance</th>
+                      <th>Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody id="client-detail-projects-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== PROJECTS ===== -->
+        <section class="section" id="section-projects">
+          <div class="dept-header">
+            <div class="dept-icon" style="background:rgba(16,185,129,0.1);color:var(--success);">📁</div>
+            <div class="dept-info">
+              <h2>Gestion des Projets</h2>
+              <p>Suivi de la rentabilité, dépenses et progression par projet</p>
+            </div>
+          </div>
+          <div class="kpi-summary-grid" id="projects-summary-cards"></div>
+          <div class="data-table-card">
+            <div class="data-table-header" style="display:flex; justify-content:space-between; align-items:center;">
+              <h3>📋 Tous les projets</h3>
+              <button class="btn btn-secondary" id="btn-add-expense" style="font-size:13px;">+ Nouvelle Dépense</button>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Client</th>
+                    <th>Projet</th>
+                    <th>Type</th>
+                    <th>Revenu</th>
+                    <th>Dépenses</th>
+                    <th>Profit</th>
+                    <th>Marge</th>
+                    <th>Encaissé</th>
+                    <th>Statut</th>
+                  </tr>
+                </thead>
+                <tbody id="projects-tbody"></tbody>
+                <tfoot id="projects-tfoot"></tfoot>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== CASH FLOW ===== -->
+        <section class="section" id="section-cashflow">
+          <div class="dept-header">
+            <div class="dept-icon" style="background:rgba(239,68,68,0.1);color:var(--danger);">💸</div>
+            <div class="dept-info">
+              <h2>Prévisions Cash-Flow</h2>
+              <p>Dépenses récurrentes, salaires et factures à prévoir</p>
+            </div>
+          </div>
+          <div class="kpi-summary-grid" id="cashflow-summary-cards"></div>
+
+          <div class="data-table-card" style="margin-bottom:16px;">
+            <div class="data-table-header" style="display:flex; justify-content:space-between; align-items:center;">
+              <h3>🔄 Dépenses Récurrentes</h3>
+              <button class="btn btn-secondary btn-add-recurring" style="font-size:13px;">+ Ajouter</button>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="data-table">
+                <thead><tr><th>Nom</th><th>Catégorie</th><th>Montant</th><th>Fréquence</th><th>Statut</th><th>Actions</th></tr></thead>
+                <tbody id="recurring-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="data-table-card" style="margin-bottom:16px;">
+            <div class="data-table-header" style="display:flex; justify-content:space-between; align-items:center;">
+              <h3>👤 Salaires</h3>
+              <button class="btn btn-secondary btn-add-salary" style="font-size:13px;">+ Ajouter</button>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="data-table">
+                <thead><tr><th>Employé</th><th>Montant</th><th>Fréquence</th><th>Statut</th><th>Actions</th></tr></thead>
+                <tbody id="salaries-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="data-table-card">
+            <div class="data-table-header" style="display:flex; justify-content:space-between; align-items:center;">
+              <h3>📋 Factures à Prévoir (Freelancers)</h3>
+              <button class="btn btn-secondary btn-add-planned" style="font-size:13px;">+ Ajouter</button>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="data-table">
+                <thead><tr><th>Description</th><th>Projet lié</th><th>Freelancer</th><th>Montant estimé</th><th>Échéance</th><th>Statut</th><th>Actions</th></tr></thead>
+                <tbody id="planned-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <!-- ===== HISTORY ===== -->
         <section class="section" id="section-history">
           <div class="dept-header">
@@ -376,7 +548,8 @@
           </div>
           <div class="form-group">
             <label class="form-label">Nom du Client</label>
-            <input type="text" id="sale-client" class="form-input" placeholder="Ex: Entreprise XYZ" required>
+            <input type="text" id="sale-client" class="form-input" placeholder="Ex: Entreprise XYZ" list="datalist-clients" autocomplete="off" required>
+            <datalist id="datalist-clients"></datalist>
           </div>
         </div>
         <div class="form-group" id="group-project-name" style="display:none; margin-bottom: 20px;">
@@ -504,6 +677,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <script src="app.js?v=11"></script>
+  <script src="app.js?v=12"></script>
 </body>
 </html>
