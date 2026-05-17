@@ -130,6 +130,7 @@ async function initData() {
     if(!appData.collectionsLog) appData.collectionsLog = [];
     if(!appData.clients) appData.clients = [];
     if(!appData.cashflow) appData.cashflow = { recurringExpenses: [], salaries: [], plannedExpenses: [] };
+    if(!appData.retainerProjects) appData.retainerProjects = [];
     
     // Ensure all existing sales have the 'collected' attribute and an 'id' for backwards compatibility
     appData.salesLog.forEach(sale => {
@@ -1704,6 +1705,169 @@ window.deletePlanned = async function(id) {
     saveData();
 };
 
+// --- Retainer / Ongoing Projects ---
+function renderRetainers() {
+    const listEl = document.getElementById('retainers-list');
+    const cardsEl = document.getElementById('retainers-summary-cards');
+    if (!listEl) return;
+
+    const retainers = appData.retainerProjects || [];
+    const sales = appData.salesLog || [];
+
+    // Global stats across all retainer projects
+    let totalHours = 0, totalRevenue = 0, totalCost = 0, totalProfit = 0;
+
+    retainers.forEach(r => {
+        const entries = sales.filter(s => s.retainerProjectId === r.id);
+        entries.forEach(e => {
+            totalHours += e.retainerHours || 0;
+            totalRevenue += e.revenue || 0;
+            const cost = (e.retainerHours || 0) * (r.freelancerRate || 0);
+            totalCost += cost;
+            totalProfit += (e.revenue || 0) - cost;
+        });
+    });
+
+    if (cardsEl) {
+        const avgMargin = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 100) : 0;
+        cardsEl.innerHTML = `
+            <div class="kpi-summary-card cyan">
+                <div class="kpi-card-header"><div class="icon-wrap cyan">⏱️</div></div>
+                <div class="kpi-card-label">Total Heures Facturées</div>
+                <div class="kpi-card-value">${totalHours}h</div>
+            </div>
+            <div class="kpi-summary-card green">
+                <div class="kpi-card-header"><div class="icon-wrap green">💰</div></div>
+                <div class="kpi-card-label">Revenu Total</div>
+                <div class="kpi-card-value">${formatCurrency(totalRevenue)}</div>
+            </div>
+            <div class="kpi-summary-card purple">
+                <div class="kpi-card-header"><div class="icon-wrap purple">💸</div></div>
+                <div class="kpi-card-label">Coûts Freelancers</div>
+                <div class="kpi-card-value">${formatCurrency(totalCost)}</div>
+            </div>
+            <div class="kpi-summary-card blue">
+                <div class="kpi-card-header"><div class="icon-wrap blue">📊</div></div>
+                <div class="kpi-card-label">Profit Net (${avgMargin}%)</div>
+                <div class="kpi-card-value" style="color:var(--success);">${formatCurrency(totalProfit)}</div>
+            </div>
+        `;
+    }
+
+    if (retainers.length === 0) {
+        listEl.innerHTML = `
+            <div class="data-table-card" style="padding:40px; text-align:center;">
+                <div style="font-size:48px; margin-bottom:16px;">⏱️</div>
+                <h3 style="margin-bottom:8px; color:var(--text-primary);">Aucun projet en continu</h3>
+                <p style="color:var(--text-muted); font-size:13px;">Cliquez sur "+ Nouveau Projet en Continu" pour configurer votre premier projet avec facturation horaire automatique.</p>
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+    retainers.forEach(r => {
+        const entries = sales.filter(s => s.retainerProjectId === r.id).sort((a, b) => b.date.localeCompare(a.date));
+        let rHours = 0, rRevenue = 0, rCost = 0;
+        entries.forEach(e => {
+            rHours += e.retainerHours || 0;
+            rRevenue += e.revenue || 0;
+            rCost += (e.retainerHours || 0) * (r.freelancerRate || 0);
+        });
+        const rProfit = rRevenue - rCost;
+        const rMargin = rRevenue > 0 ? Math.round((rProfit / rRevenue) * 100) : 0;
+        const clientName = r.clientId ? getClientName(r.clientId) : r.clientName;
+
+        html += `
+        <div class="data-table-card" style="margin-bottom:16px;">
+            <div class="data-table-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <h3 style="margin:0;">⏱️ ${r.projectName}</h3>
+                    <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">
+                        Client: <strong>${clientName}</strong> · 
+                        Taux client: <strong>${formatCurrency(r.clientRate)}/h</strong> · 
+                        Consultant: <strong>${r.freelancerName}</strong> à <strong>${formatCurrency(r.freelancerRate)}/h</strong> ·
+                        Marge/h: <strong style="color:var(--success);">${formatCurrency(r.clientRate - r.freelancerRate)}</strong>
+                    </div>
+                </div>
+                <button class="btn btn-ghost" onclick="window.deleteRetainer('${r.id}')" style="color:var(--danger);padding:4px 8px;font-size:12px;">🗑️</button>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; padding:12px 16px; background:rgba(245,158,11,0.04); border-bottom:1px solid var(--border-color);">
+                <div style="text-align:center;">
+                    <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Heures</div>
+                    <div style="font-size:18px; font-weight:700;">${rHours}h</div>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Facturé</div>
+                    <div style="font-size:18px; font-weight:700; color:var(--success);">${formatCurrency(rRevenue)}</div>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Coût ${r.freelancerName}</div>
+                    <div style="font-size:18px; font-weight:700; color:var(--danger);">${formatCurrency(rCost)}</div>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Profit (${rMargin}%)</div>
+                    <div style="font-size:18px; font-weight:700; color:var(--success);">${formatCurrency(rProfit)}</div>
+                </div>
+            </div>
+
+            <div style="overflow-x:auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Semaine</th>
+                            <th>Heures</th>
+                            <th>Facture Client</th>
+                            <th>Coût ${r.freelancerName}</th>
+                            <th>Profit</th>
+                            <th>Encaissé</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${entries.length === 0 ? `<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--text-muted);">Aucune heure enregistrée</td></tr>` :
+                        entries.map(e => {
+                            const cost = (e.retainerHours || 0) * (r.freelancerRate || 0);
+                            const profit = e.revenue - cost;
+                            const collected = e.collected >= e.revenue;
+                            return `
+                                <tr>
+                                    <td class="value-cell">${formatDisplayDate(e.date)}</td>
+                                    <td class="value-cell" style="font-weight:700;">${e.retainerHours}h</td>
+                                    <td class="value-cell" style="color:var(--success);">${formatCurrency(e.revenue)}</td>
+                                    <td class="value-cell" style="color:var(--danger);">${formatCurrency(cost)}</td>
+                                    <td class="value-cell" style="font-weight:700; color:var(--success);">${formatCurrency(profit)}</td>
+                                    <td>${collected ? '<span class="status-badge good">✅ Payé</span>' : '<span class="status-badge warning">En attente</span>'}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                    ${entries.length > 0 ? `
+                    <tfoot>
+                        <tr style="font-weight:700; background:rgba(245,158,11,0.06); border-top:2px solid var(--border-color);">
+                            <td>TOTAL</td>
+                            <td class="value-cell">${rHours}h</td>
+                            <td class="value-cell" style="color:var(--success);">${formatCurrency(rRevenue)}</td>
+                            <td class="value-cell" style="color:var(--danger);">${formatCurrency(rCost)}</td>
+                            <td class="value-cell" style="color:var(--success);">${formatCurrency(rProfit)}</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>` : ''}
+                </table>
+            </div>
+        </div>
+        `;
+    });
+
+    listEl.innerHTML = html;
+}
+
+window.deleteRetainer = async function(id) {
+    if (!confirm('Supprimer ce projet en continu ? Les ventes liées ne seront pas supprimées.')) return;
+    appData.retainerProjects = appData.retainerProjects.filter(r => r.id !== id);
+    saveData();
+};
+
 // --- Init ---
 function updateUI() {
     calculateDerivedKPIs();
@@ -1716,6 +1880,7 @@ function updateUI() {
     renderClients();
     renderProjects();
     renderCashFlow();
+    renderRetainers();
 }
 
 function initDateFilter() {
@@ -2150,6 +2315,153 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('expense-amount').value = '';
         document.getElementById('expense-freelancer').value = '';
         const toast = document.createElement('div'); toast.className = 'toast success'; toast.innerHTML = `✅ Dépense ajoutée au projet : ${desc}`; document.body.appendChild(toast); setTimeout(() => toast.remove(), 4000);
+    });
+
+    // ===== MODAL: New Retainer Project =====
+    const retainerModal = document.getElementById('modal-retainer-overlay');
+    const openRetainer = () => { retainerModal.classList.add('open'); };
+    const closeRetainer = () => { retainerModal.classList.remove('open'); };
+    document.getElementById('btn-new-retainer')?.addEventListener('click', openRetainer);
+    document.getElementById('modal-retainer-close')?.addEventListener('click', closeRetainer);
+    document.getElementById('modal-retainer-cancel')?.addEventListener('click', closeRetainer);
+    retainerModal?.querySelector('.modal-footer .btn-primary')?.addEventListener('click', () => {
+        const clientName = document.getElementById('retainer-client').value.trim();
+        const projectName = document.getElementById('retainer-project').value.trim();
+        const clientRate = parseFloat(document.getElementById('retainer-client-rate').value);
+        const freelancerRate = parseFloat(document.getElementById('retainer-freelancer-rate').value);
+        const freelancerName = document.getElementById('retainer-freelancer-name').value.trim();
+        if (!clientName || !projectName || isNaN(clientRate) || isNaN(freelancerRate)) {
+            alert('Veuillez remplir tous les champs obligatoires.'); return;
+        }
+        const client = getOrCreateClient(clientName);
+        appData.retainerProjects.push({
+            id: 'ret_' + Date.now(),
+            clientName: clientName,
+            clientId: client ? client.id : null,
+            projectName: projectName,
+            clientRate: clientRate,
+            freelancerRate: freelancerRate,
+            freelancerName: freelancerName,
+            billingFrequency: document.getElementById('retainer-billing-freq').value,
+            createdAt: TODAY_STR,
+            active: true
+        });
+        saveData(); closeRetainer();
+        // Reset form
+        ['retainer-client','retainer-project','retainer-client-rate','retainer-freelancer-rate','retainer-freelancer-name'].forEach(id => { document.getElementById(id).value = ''; });
+        const toast = document.createElement('div'); toast.className = 'toast success'; toast.innerHTML = `✅ Projet en continu créé : ${projectName}`; document.body.appendChild(toast); setTimeout(() => toast.remove(), 4000);
+    });
+
+    // ===== MODAL: Log Hours =====
+    const logHoursModal = document.getElementById('modal-loghours-overlay');
+    const openLogHours = () => {
+        const sel = document.getElementById('loghours-project');
+        const retainers = appData.retainerProjects || [];
+        if (retainers.length === 0) {
+            alert('Aucun projet en continu configuré. Créez-en un d\'abord.');
+            return;
+        }
+        sel.innerHTML = retainers.map(r => {
+            const clientName = r.clientId ? getClientName(r.clientId) : r.clientName;
+            return `<option value="${r.id}">${r.projectName} — ${clientName} (${formatCurrency(r.clientRate)}/h)</option>`;
+        }).join('');
+        document.getElementById('loghours-date').value = TODAY_STR;
+        document.getElementById('loghours-hours').value = '';
+        document.getElementById('loghours-preview').style.display = 'none';
+        document.getElementById('loghours-collected').checked = true;
+        logHoursModal.classList.add('open');
+    };
+    const closeLogHours = () => { logHoursModal.classList.remove('open'); };
+    document.getElementById('btn-log-hours')?.addEventListener('click', openLogHours);
+    document.getElementById('modal-loghours-close')?.addEventListener('click', closeLogHours);
+    document.getElementById('modal-loghours-cancel')?.addEventListener('click', closeLogHours);
+
+    // Live preview when hours or project changes
+    const updateLogHoursPreview = () => {
+        const projId = document.getElementById('loghours-project')?.value;
+        const hours = parseFloat(document.getElementById('loghours-hours')?.value) || 0;
+        const retainer = (appData.retainerProjects || []).find(r => r.id === projId);
+        const previewEl = document.getElementById('loghours-preview');
+        if (!retainer || hours <= 0) { previewEl.style.display = 'none'; return; }
+        const revenue = hours * retainer.clientRate;
+        const cost = hours * retainer.freelancerRate;
+        const profit = revenue - cost;
+        const margin = revenue > 0 ? Math.round((profit / revenue) * 100) : 0;
+        document.getElementById('preview-revenue').textContent = formatCurrency(revenue);
+        document.getElementById('preview-cost').textContent = formatCurrency(cost);
+        document.getElementById('preview-profit').textContent = formatCurrency(profit);
+        document.getElementById('preview-margin').textContent = margin + '%';
+        previewEl.style.display = 'block';
+    };
+    document.getElementById('loghours-hours')?.addEventListener('input', updateLogHoursPreview);
+    document.getElementById('loghours-project')?.addEventListener('change', updateLogHoursPreview);
+
+    // Save hours
+    logHoursModal?.querySelector('.modal-footer .btn-primary')?.addEventListener('click', () => {
+        const projId = document.getElementById('loghours-project').value;
+        const hours = parseFloat(document.getElementById('loghours-hours').value);
+        const saleDate = document.getElementById('loghours-date').value;
+        const isCollected = document.getElementById('loghours-collected').checked;
+        if (!projId || isNaN(hours) || hours <= 0 || !saleDate) {
+            alert('Veuillez sélectionner un projet, entrer les heures et la date.'); return;
+        }
+        const retainer = appData.retainerProjects.find(r => r.id === projId);
+        if (!retainer) return;
+
+        const revenue = hours * retainer.clientRate;
+        const cost = hours * retainer.freelancerRate;
+        const clientName = retainer.clientId ? getClientName(retainer.clientId) : retainer.clientName;
+
+        // Create sale entry
+        const saleId = 'sale_' + Date.now();
+        const targetWeek = getWeekForDate(saleDate);
+
+        appData.salesLog.push({
+            id: saleId,
+            date: saleDate,
+            clientName: clientName,
+            clientId: retainer.clientId,
+            type: 'retainer',
+            projectName: retainer.projectName,
+            revenue: revenue,
+            frontend: isCollected ? revenue : 0,
+            collected: isCollected ? revenue : 0,
+            milestones: [],
+            expenses: [{
+                id: 'exp_' + Date.now(),
+                date: saleDate,
+                description: `${hours}h × ${formatCurrency(retainer.freelancerRate)}/h — ${retainer.freelancerName}`,
+                category: 'freelancer',
+                amount: cost,
+                freelancerName: retainer.freelancerName
+            }],
+            status: isCollected ? 'terminé' : 'en_cours',
+            retainerProjectId: retainer.id,
+            retainerHours: hours
+        });
+
+        // Update KPIs
+        let kpiRev = appData.northstar.kpis.find(k => k.id === 'ns_revenue');
+        let kpiFront = appData.northstar.kpis.find(k => k.id === 'ns_frontend');
+        if(kpiRev) kpiRev.values[targetWeek] = (kpiRev.values[targetWeek] || 0) + revenue;
+        if(kpiFront && isCollected) kpiFront.values[targetWeek] = (kpiFront.values[targetWeek] || 0) + revenue;
+
+        // If collected, also add a collection entry
+        if (isCollected) {
+            appData.collectionsLog.push({
+                id: 'col_' + Date.now(),
+                saleId: saleId,
+                date: saleDate,
+                amount: revenue,
+                method: 'virement',
+                notes: `Facturation horaire — ${hours}h`
+            });
+        }
+
+        saveData(); closeLogHours();
+        const toast = document.createElement('div'); toast.className = 'toast success';
+        toast.innerHTML = `✅ ${hours}h enregistrées — Facture: ${formatCurrency(revenue)}, Coût: ${formatCurrency(cost)}, Profit: ${formatCurrency(revenue - cost)}`;
+        document.body.appendChild(toast); setTimeout(() => toast.remove(), 5000);
     });
 
     // Trigger async data fetch
