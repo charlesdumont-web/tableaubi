@@ -441,9 +441,10 @@
           <div class="data-table-card" style="border-left:3px solid #f59e0b;">
             <div class="data-table-header" style="display:flex; justify-content:space-between; align-items:center;">
               <div>
-                <h3>⏱️ Paiements Freelancers — Projets en continu</h3>
-                <p style="font-size:12px; color:var(--text-muted); margin-top:2px;">Calculé automatiquement à partir des heures loggées. Paiement mensuel.</p>
+                <h3>⏱️ Solde Freelancers — Projets en continu</h3>
+                <p style="font-size:12px; color:var(--text-muted); margin-top:2px;">Calculé automatiquement. Total accumulé moins paiements effectués.</p>
               </div>
+              <button class="btn btn-primary" id="btn-pay-freelancer" style="background:#f59e0b;border-color:#f59e0b; font-size:13px;">💵 Enregistrer un paiement</button>
             </div>
             <div style="overflow-x:auto;">
               <table class="data-table">
@@ -451,16 +452,27 @@
                   <tr>
                     <th>Freelancer</th>
                     <th>Projet</th>
-                    <th>Heures (ce mois)</th>
+                    <th>Heures totales</th>
                     <th>Taux horaire</th>
-                    <th>Montant dû</th>
-                    <th>Heures (total)</th>
-                    <th>Total cumulatif</th>
+                    <th>Coût total accumulé</th>
+                    <th>Déjà payé</th>
+                    <th>Solde dû</th>
                   </tr>
                 </thead>
                 <tbody id="retainer-payouts-tbody"></tbody>
                 <tfoot id="retainer-payouts-tfoot"></tfoot>
               </table>
+            </div>
+
+            <!-- Payment history -->
+            <div id="freelancer-payments-section" style="display:none; margin-top:16px; border-top:1px dashed var(--border-color); padding-top:16px;">
+              <h4 style="margin:0 0 10px; font-size:14px; color:var(--text-secondary);">📜 Historique des paiements</h4>
+              <div style="overflow-x:auto;">
+                <table class="data-table">
+                  <thead><tr><th>Date</th><th>Freelancer</th><th>Montant</th><th>Note</th><th>Actions</th></tr></thead>
+                  <tbody id="freelancer-payments-tbody"></tbody>
+                </table>
+              </div>
             </div>
           </div>
         </section>
@@ -1002,7 +1014,45 @@
     </div>
   </div>
 
+  <!-- Modal: Payer un Freelancer -->
+  <div class="modal-overlay" id="modal-payfreelancer-overlay">
+    <div class="modal" style="max-width:480px;">
+      <div class="modal-header">
+        <h2>💵 Enregistrer un Paiement</h2>
+        <button class="modal-close" id="modal-payfreelancer-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label">Freelancer</label>
+          <select id="payfreelancer-who" class="form-select">
+            <!-- populated dynamically -->
+          </select>
+        </div>
+        <div id="payfreelancer-balance" style="display:none; margin-bottom:16px; padding:12px; background:rgba(245,158,11,0.06); border-radius:var(--radius-sm); border:1px solid #f59e0b; font-size:13px;">
+        </div>
+        <div class="form-grid" style="margin-bottom:16px;">
+          <div class="form-group">
+            <label class="form-label">Montant payé ($)</label>
+            <input type="number" id="payfreelancer-amount" class="form-input" placeholder="Ex: 3325" min="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Date du paiement</label>
+            <input type="date" id="payfreelancer-date" class="form-input">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Note (optionnelle)</label>
+          <input type="text" id="payfreelancer-note" class="form-input" placeholder="Ex: Paiement mai 2026, virement Desjardins...">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="modal-payfreelancer-cancel">Annuler</button>
+        <button class="btn btn-primary" style="background:#f59e0b;border-color:#f59e0b;">💵 Enregistrer le Paiement</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>

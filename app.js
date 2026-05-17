@@ -131,6 +131,7 @@ async function initData() {
     if(!appData.clients) appData.clients = [];
     if(!appData.cashflow) appData.cashflow = { recurringExpenses: [], salaries: [], plannedExpenses: [] };
     if(!appData.retainerProjects) appData.retainerProjects = [];
+    if(!appData.freelancerPayments) appData.freelancerPayments = [];
     
     // Ensure all existing sales have the 'collected' attribute and an 'id' for backwards compatibility
     appData.salesLog.forEach(sale => {
@@ -1654,15 +1655,13 @@ function renderCashFlow() {
         }).join('') || '<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text-muted);">Aucune facture planifiée</td></tr>';
     }
 
-    // Auto-calculated retainer freelancer payouts
+    // Auto-calculated retainer freelancer payouts with payment tracking
     const retPayTbody = document.getElementById('retainer-payouts-tbody');
     const retPayTfoot = document.getElementById('retainer-payouts-tfoot');
     const retainers = appData.retainerProjects || [];
     const sales = appData.salesLog || [];
-    const now = new Date();
-    const currentMonthStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-    let retainerMonthlyTotal = 0;
-    let retainerGrandTotal = 0;
+    const payments = appData.freelancerPayments || [];
+    let totalOwed = 0;
 
     if (retPayTbody) {
         if (retainers.length === 0) {
@@ -1670,49 +1669,68 @@ function renderCashFlow() {
             if (retPayTfoot) retPayTfoot.innerHTML = '';
         } else {
             let rows = '';
-            let totalMonthHours = 0, totalMonthCost = 0, totalAllHours = 0, totalAllCost = 0;
+            let grandTotalCost = 0, grandTotalPaid = 0, grandTotalOwed = 0;
 
             retainers.forEach(r => {
                 const allEntries = sales.filter(s => s.retainerProjectId === r.id);
-                const monthEntries = allEntries.filter(s => s.date && s.date.startsWith(currentMonthStr));
-                
-                const monthHours = monthEntries.reduce((a, s) => a + (s.retainerHours || 0), 0);
-                const monthCost = monthHours * r.freelancerRate;
                 const allHours = allEntries.reduce((a, s) => a + (s.retainerHours || 0), 0);
-                const allCost = allHours * r.freelancerRate;
+                const totalCost = allHours * r.freelancerRate;
+                const totalPaid = payments
+                    .filter(p => p.freelancerName === r.freelancerName && p.retainerProjectId === r.id)
+                    .reduce((a, p) => a + (p.amount || 0), 0);
+                const owed = totalCost - totalPaid;
 
-                totalMonthHours += monthHours;
-                totalMonthCost += monthCost;
-                totalAllHours += allHours;
-                totalAllCost += allCost;
+                grandTotalCost += totalCost;
+                grandTotalPaid += totalPaid;
+                grandTotalOwed += owed;
+
+                const owedColor = owed > 0 ? 'var(--danger)' : 'var(--success)';
+                const owedLabel = owed > 0 ? formatCurrency(owed) : '✅ $0';
 
                 rows += `<tr>
                     <td style="font-weight:600;">${r.freelancerName}</td>
                     <td>${r.projectName}</td>
-                    <td class="value-cell" style="font-weight:700;">${monthHours}h</td>
-                    <td class="value-cell">${formatCurrency(r.freelancerRate)}/h</td>
-                    <td class="value-cell" style="font-weight:700; color:var(--danger);">${formatCurrency(monthCost)}</td>
                     <td class="value-cell">${allHours}h</td>
-                    <td class="value-cell" style="color:var(--danger);">${formatCurrency(allCost)}</td>
+                    <td class="value-cell">${formatCurrency(r.freelancerRate)}/h</td>
+                    <td class="value-cell">${formatCurrency(totalCost)}</td>
+                    <td class="value-cell" style="color:var(--success);">${formatCurrency(totalPaid)}</td>
+                    <td class="value-cell" style="font-weight:700; color:${owedColor}; font-size:15px;">${owedLabel}</td>
                 </tr>`;
             });
 
             retPayTbody.innerHTML = rows;
-            retainerMonthlyTotal = totalMonthCost;
-            retainerGrandTotal = totalAllCost;
+            totalOwed = grandTotalOwed;
 
             if (retPayTfoot) {
                 retPayTfoot.innerHTML = `
                     <tr style="font-weight:700; background:rgba(245,158,11,0.06); border-top:2px solid var(--border-color);">
-                        <td colspan="2">TOTAL CE MOIS</td>
-                        <td class="value-cell">${totalMonthHours}h</td>
-                        <td></td>
-                        <td class="value-cell" style="color:var(--danger);">${formatCurrency(totalMonthCost)}</td>
-                        <td class="value-cell">${totalAllHours}h</td>
-                        <td class="value-cell" style="color:var(--danger);">${formatCurrency(totalAllCost)}</td>
+                        <td colspan="4">TOTAL</td>
+                        <td class="value-cell">${formatCurrency(grandTotalCost)}</td>
+                        <td class="value-cell" style="color:var(--success);">${formatCurrency(grandTotalPaid)}</td>
+                        <td class="value-cell" style="color:var(--danger); font-size:16px;">${formatCurrency(grandTotalOwed)}</td>
                     </tr>
                 `;
             }
+        }
+    }
+
+    // Payment history
+    const payHistSection = document.getElementById('freelancer-payments-section');
+    const payHistTbody = document.getElementById('freelancer-payments-tbody');
+    if (payHistSection && payHistTbody) {
+        if (payments.length > 0) {
+            payHistSection.style.display = 'block';
+            payHistTbody.innerHTML = [...payments].sort((a, b) => b.date.localeCompare(a.date)).map(p => `
+                <tr>
+                    <td class="value-cell">${formatDisplayDate(p.date)}</td>
+                    <td style="font-weight:600;">${p.freelancerName}</td>
+                    <td class="value-cell" style="color:var(--success); font-weight:700;">${formatCurrency(p.amount)}</td>
+                    <td style="color:var(--text-muted);">${p.note || '—'}</td>
+                    <td><button class="btn btn-ghost" onclick="window.deleteFreelancerPayment('${p.id}')" style="color:var(--danger);padding:4px 8px;font-size:12px;">🗑️</button></td>
+                </tr>
+            `).join('');
+        } else {
+            payHistSection.style.display = 'none';
         }
     }
 
@@ -1726,9 +1744,7 @@ function renderCashFlow() {
             return a + (s.frequency === 'monthly' ? s.amount : s.amount * 2.17);
         }, 0);
         const pendingFreelancerManual = cf.plannedExpenses.filter(p => p.status !== 'payé').reduce((a, p) => a + (p.estimatedAmount || 0), 0);
-        const pendingFreelancerAuto = retainerMonthlyTotal;
-        const pendingFreelancerTotal = pendingFreelancerManual + pendingFreelancerAuto;
-        const totalMonthly = monthlyRecurring + monthlySalaries + pendingFreelancerAuto;
+        const totalMonthly = monthlyRecurring + monthlySalaries;
 
         cardsEl.innerHTML = `
             <div class="kpi-summary-card blue">
@@ -1743,9 +1759,8 @@ function renderCashFlow() {
             </div>
             <div class="kpi-summary-card cyan">
                 <div class="kpi-card-header"><div class="icon-wrap cyan">⏱️</div></div>
-                <div class="kpi-card-label">Freelancers ce mois</div>
-                <div class="kpi-card-value" style="color:var(--danger);">${formatCurrency(pendingFreelancerTotal)}</div>
-                ${pendingFreelancerAuto > 0 ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">dont ${formatCurrency(pendingFreelancerAuto)} auto (retainers)</div>` : ''}
+                <div class="kpi-card-label">Solde dû Freelancers</div>
+                <div class="kpi-card-value" style="color:${totalOwed > 0 ? 'var(--danger)' : 'var(--success)'};">${formatCurrency(totalOwed)}</div>
             </div>
             <div class="kpi-summary-card green">
                 <div class="kpi-card-header"><div class="icon-wrap green">💸</div></div>
@@ -1767,6 +1782,10 @@ window.deleteSalary = async function(id) {
 };
 window.deletePlanned = async function(id) {
     appData.cashflow.plannedExpenses = appData.cashflow.plannedExpenses.filter(p => p.id !== id);
+    saveData();
+};
+window.deleteFreelancerPayment = async function(id) {
+    appData.freelancerPayments = appData.freelancerPayments.filter(p => p.id !== id);
     saveData();
 };
 
@@ -2555,6 +2574,70 @@ document.addEventListener('DOMContentLoaded', () => {
         const toast = document.createElement('div'); toast.className = 'toast success';
         toast.innerHTML = `✅ ${hours}h enregistrées — Facture: ${formatCurrency(revenue)}, Coût: ${formatCurrency(cost)}, Profit: ${formatCurrency(revenue - cost)}`;
         document.body.appendChild(toast); setTimeout(() => toast.remove(), 5000);
+    });
+
+    // ===== MODAL: Pay Freelancer =====
+    const payModal = document.getElementById('modal-payfreelancer-overlay');
+    const openPayFreelancer = () => {
+        const retainers = appData.retainerProjects || [];
+        if (retainers.length === 0) { alert('Aucun projet en continu configuré.'); return; }
+        const sel = document.getElementById('payfreelancer-who');
+        sel.innerHTML = retainers.map(r => `<option value="${r.id}">${r.freelancerName} — ${r.projectName}</option>`).join('');
+        document.getElementById('payfreelancer-date').value = TODAY_STR;
+        document.getElementById('payfreelancer-amount').value = '';
+        document.getElementById('payfreelancer-note').value = '';
+        updatePayFreelancerBalance();
+        payModal.classList.add('open');
+    };
+    const closePayFreelancer = () => { payModal.classList.remove('open'); };
+    document.getElementById('btn-pay-freelancer')?.addEventListener('click', openPayFreelancer);
+    document.getElementById('modal-payfreelancer-close')?.addEventListener('click', closePayFreelancer);
+    document.getElementById('modal-payfreelancer-cancel')?.addEventListener('click', closePayFreelancer);
+
+    // Show balance when selecting freelancer
+    const updatePayFreelancerBalance = () => {
+        const rId = document.getElementById('payfreelancer-who')?.value;
+        const balEl = document.getElementById('payfreelancer-balance');
+        if (!rId || !balEl) return;
+        const r = (appData.retainerProjects || []).find(x => x.id === rId);
+        if (!r) { balEl.style.display = 'none'; return; }
+        const allEntries = (appData.salesLog || []).filter(s => s.retainerProjectId === r.id);
+        const allHours = allEntries.reduce((a, s) => a + (s.retainerHours || 0), 0);
+        const totalCost = allHours * r.freelancerRate;
+        const totalPaid = (appData.freelancerPayments || [])
+            .filter(p => p.retainerProjectId === r.id)
+            .reduce((a, p) => a + (p.amount || 0), 0);
+        const owed = totalCost - totalPaid;
+        balEl.style.display = 'block';
+        balEl.innerHTML = `
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                <div>Total accumulé :</div><div style="font-weight:700;">${formatCurrency(totalCost)} (${allHours}h × ${formatCurrency(r.freelancerRate)})</div>
+                <div>Déjà payé :</div><div style="font-weight:700; color:var(--success);">${formatCurrency(totalPaid)}</div>
+                <div>⚡ Solde dû :</div><div style="font-weight:700; color:${owed > 0 ? 'var(--danger)' : 'var(--success)'}; font-size:16px;">${formatCurrency(owed)}</div>
+            </div>
+        `;
+    };
+    document.getElementById('payfreelancer-who')?.addEventListener('change', updatePayFreelancerBalance);
+
+    payModal?.querySelector('.modal-footer .btn-primary')?.addEventListener('click', () => {
+        const rId = document.getElementById('payfreelancer-who').value;
+        const amount = parseFloat(document.getElementById('payfreelancer-amount').value);
+        const date = document.getElementById('payfreelancer-date').value;
+        if (!rId || isNaN(amount) || amount <= 0 || !date) { alert('Veuillez remplir tous les champs.'); return; }
+        const r = appData.retainerProjects.find(x => x.id === rId);
+        if (!r) return;
+        appData.freelancerPayments.push({
+            id: 'fpay_' + Date.now(),
+            retainerProjectId: r.id,
+            freelancerName: r.freelancerName,
+            amount: amount,
+            date: date,
+            note: document.getElementById('payfreelancer-note').value.trim()
+        });
+        saveData(); closePayFreelancer();
+        const toast = document.createElement('div'); toast.className = 'toast success';
+        toast.innerHTML = `✅ Paiement de ${formatCurrency(amount)} enregistré pour ${r.freelancerName}`;
+        document.body.appendChild(toast); setTimeout(() => toast.remove(), 4000);
     });
 
     // Trigger async data fetch
