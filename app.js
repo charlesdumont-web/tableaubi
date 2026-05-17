@@ -1744,6 +1744,7 @@ function renderCashFlow() {
             return a + (s.frequency === 'monthly' ? s.amount : s.amount * 2.17);
         }, 0);
         const pendingFreelancerManual = cf.plannedExpenses.filter(p => p.status !== 'payé').reduce((a, p) => a + (p.estimatedAmount || 0), 0);
+        const totalFreelancerOwed = totalOwed + pendingFreelancerManual;
         const totalMonthly = monthlyRecurring + monthlySalaries;
 
         cardsEl.innerHTML = `
@@ -1760,7 +1761,8 @@ function renderCashFlow() {
             <div class="kpi-summary-card cyan">
                 <div class="kpi-card-header"><div class="icon-wrap cyan">⏱️</div></div>
                 <div class="kpi-card-label">Solde dû Freelancers</div>
-                <div class="kpi-card-value" style="color:${totalOwed > 0 ? 'var(--danger)' : 'var(--success)'};">${formatCurrency(totalOwed)}</div>
+                <div class="kpi-card-value" style="color:${totalFreelancerOwed > 0 ? 'var(--danger)' : 'var(--success)'};">${formatCurrency(totalFreelancerOwed)}</div>
+                ${pendingFreelancerManual > 0 ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">dont ${formatCurrency(pendingFreelancerManual)} factures manuelles</div>` : ''}
             </div>
             <div class="kpi-summary-card green">
                 <div class="kpi-card-header"><div class="icon-wrap green">💸</div></div>
