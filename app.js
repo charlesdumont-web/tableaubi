@@ -1641,22 +1641,33 @@ function getCashFlowMetrics() {
         return a + (s.frequency === 'monthly' ? s.amount : s.amount * 2.17);
     }, 0);
 
-    // Retainer freelancer owed
+    // Retainer freelancer: owed amounts + estimated monthly cost
     const retainers = appData.retainerProjects || [];
     const sales = appData.salesLog || [];
     const payments = appData.freelancerPayments || [];
     let retainerOwed = 0;
+    let monthlyFreelancerCost = 0;
     retainers.forEach(r => {
         const allEntries = sales.filter(s => s.retainerProjectId === r.id);
         const allHours = allEntries.reduce((a, s) => a + (s.retainerHours || 0), 0);
         const totalCost = allHours * r.freelancerRate;
         const totalPaid = payments.filter(p => p.freelancerName === r.freelancerName && p.retainerProjectId === r.id).reduce((a, p) => a + (p.amount || 0), 0);
         retainerOwed += (totalCost - totalPaid);
+
+        // Estimate monthly freelancer cost from activity period
+        if (allEntries.length > 0) {
+            const dates = allEntries.map(e => e.date).filter(Boolean).sort();
+            const monthsActive = dates.length > 1
+                ? Math.max(1, (new Date(dates[dates.length - 1]) - new Date(dates[0])) / (1000 * 60 * 60 * 24 * 30))
+                : 1;
+            monthlyFreelancerCost += totalCost / monthsActive;
+        }
     });
 
     const pendingFreelancerManual = cf.plannedExpenses.filter(p => p.status !== 'payé').reduce((a, p) => a + (p.estimatedAmount || 0), 0);
     const totalFreelancerOwed = retainerOwed + pendingFreelancerManual;
-    const totalMonthlyBurn = monthlyRecurring + monthlySalaries;
+    const monthlyFixedBurn = monthlyRecurring + monthlySalaries;
+    const totalMonthlyBurn = monthlyFixedBurn + monthlyFreelancerCost;
     const bankBalance = appData.bankBalance || 0;
     const creditCardDebt = appData.creditCardDebt || 0;
     const lineOfCreditDebt = appData.lineOfCreditDebt || 0;
@@ -1676,7 +1687,7 @@ function getCashFlowMetrics() {
     // Receivables
     const totalReceivables = sales.reduce((a, s) => a + Math.max(0, (s.revenue || 0) - (s.collected || 0)), 0);
 
-    return { monthlyRecurring, monthlySalaries, totalMonthlyBurn, retainerOwed, pendingFreelancerManual, totalFreelancerOwed, bankBalance, creditCardDebt, lineOfCreditDebt, totalDebt, netPosition, runway, avgMonthlyRevenue, cashRatio, totalReceivables };
+    return { monthlyRecurring, monthlySalaries, monthlyFreelancerCost, monthlyFixedBurn, totalMonthlyBurn, retainerOwed, pendingFreelancerManual, totalFreelancerOwed, bankBalance, creditCardDebt, lineOfCreditDebt, totalDebt, netPosition, runway, avgMonthlyRevenue, cashRatio, totalReceivables };
 }
 
 function renderCashFlow() {
@@ -1731,10 +1742,17 @@ function renderCashFlow() {
                 <div class="kpi-card-value" style="color:${metrics.totalFreelancerOwed > 0 ? 'var(--danger)' : 'var(--success)'};">${formatCurrency(metrics.totalFreelancerOwed)}</div>
                 ${metrics.pendingFreelancerManual > 0 ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">dont ${formatCurrency(metrics.pendingFreelancerManual)} factures manuelles</div>` : ''}
             </div>
+            <div class="kpi-summary-card cyan">
+                <div class="kpi-card-header"><div class="icon-wrap cyan">🛠️</div></div>
+                <div class="kpi-card-label">Freelancers / Mois</div>
+                <div class="kpi-card-value" style="color:var(--danger);">${formatCurrency(metrics.monthlyFreelancerCost)}</div>
+                <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Coût moyen retainers actifs</div>
+            </div>
             <div class="kpi-summary-card green">
                 <div class="kpi-card-header"><div class="icon-wrap green">🔥</div></div>
-                <div class="kpi-card-label">Burn Rate / Mois</div>
+                <div class="kpi-card-label">Burn Rate Total / Mois</div>
                 <div class="kpi-card-value" style="color:var(--danger);">${formatCurrency(metrics.totalMonthlyBurn)}</div>
+                <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Fixe ${formatCurrency(metrics.monthlyFixedBurn)} + Free. ${formatCurrency(metrics.monthlyFreelancerCost)}</div>
             </div>
             <div class="kpi-summary-card cyan">
                 <div class="kpi-card-header"><div class="icon-wrap cyan">📊</div></div>
