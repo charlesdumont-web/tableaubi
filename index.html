@@ -436,6 +436,33 @@
               </table>
             </div>
           </div>
+
+          <!-- Auto-calculated Retainer Freelancer Payouts -->
+          <div class="data-table-card" style="border-left:3px solid #f59e0b;">
+            <div class="data-table-header" style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <h3>⏱️ Paiements Freelancers — Projets en continu</h3>
+                <p style="font-size:12px; color:var(--text-muted); margin-top:2px;">Calculé automatiquement à partir des heures loggées. Paiement mensuel.</p>
+              </div>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Freelancer</th>
+                    <th>Projet</th>
+                    <th>Heures (ce mois)</th>
+                    <th>Taux horaire</th>
+                    <th>Montant dû</th>
+                    <th>Heures (total)</th>
+                    <th>Total cumulatif</th>
+                  </tr>
+                </thead>
+                <tbody id="retainer-payouts-tbody"></tbody>
+                <tfoot id="retainer-payouts-tfoot"></tfoot>
+              </table>
+            </div>
+          </div>
         </section>
 
         <!-- ===== HISTORY ===== -->

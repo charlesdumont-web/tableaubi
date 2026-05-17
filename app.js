@@ -1654,6 +1654,68 @@ function renderCashFlow() {
         }).join('') || '<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text-muted);">Aucune facture planifiée</td></tr>';
     }
 
+    // Auto-calculated retainer freelancer payouts
+    const retPayTbody = document.getElementById('retainer-payouts-tbody');
+    const retPayTfoot = document.getElementById('retainer-payouts-tfoot');
+    const retainers = appData.retainerProjects || [];
+    const sales = appData.salesLog || [];
+    const now = new Date();
+    const currentMonthStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    let retainerMonthlyTotal = 0;
+    let retainerGrandTotal = 0;
+
+    if (retPayTbody) {
+        if (retainers.length === 0) {
+            retPayTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text-muted);">Aucun projet en continu configuré</td></tr>';
+            if (retPayTfoot) retPayTfoot.innerHTML = '';
+        } else {
+            let rows = '';
+            let totalMonthHours = 0, totalMonthCost = 0, totalAllHours = 0, totalAllCost = 0;
+
+            retainers.forEach(r => {
+                const allEntries = sales.filter(s => s.retainerProjectId === r.id);
+                const monthEntries = allEntries.filter(s => s.date && s.date.startsWith(currentMonthStr));
+                
+                const monthHours = monthEntries.reduce((a, s) => a + (s.retainerHours || 0), 0);
+                const monthCost = monthHours * r.freelancerRate;
+                const allHours = allEntries.reduce((a, s) => a + (s.retainerHours || 0), 0);
+                const allCost = allHours * r.freelancerRate;
+
+                totalMonthHours += monthHours;
+                totalMonthCost += monthCost;
+                totalAllHours += allHours;
+                totalAllCost += allCost;
+
+                rows += `<tr>
+                    <td style="font-weight:600;">${r.freelancerName}</td>
+                    <td>${r.projectName}</td>
+                    <td class="value-cell" style="font-weight:700;">${monthHours}h</td>
+                    <td class="value-cell">${formatCurrency(r.freelancerRate)}/h</td>
+                    <td class="value-cell" style="font-weight:700; color:var(--danger);">${formatCurrency(monthCost)}</td>
+                    <td class="value-cell">${allHours}h</td>
+                    <td class="value-cell" style="color:var(--danger);">${formatCurrency(allCost)}</td>
+                </tr>`;
+            });
+
+            retPayTbody.innerHTML = rows;
+            retainerMonthlyTotal = totalMonthCost;
+            retainerGrandTotal = totalAllCost;
+
+            if (retPayTfoot) {
+                retPayTfoot.innerHTML = `
+                    <tr style="font-weight:700; background:rgba(245,158,11,0.06); border-top:2px solid var(--border-color);">
+                        <td colspan="2">TOTAL CE MOIS</td>
+                        <td class="value-cell">${totalMonthHours}h</td>
+                        <td></td>
+                        <td class="value-cell" style="color:var(--danger);">${formatCurrency(totalMonthCost)}</td>
+                        <td class="value-cell">${totalAllHours}h</td>
+                        <td class="value-cell" style="color:var(--danger);">${formatCurrency(totalAllCost)}</td>
+                    </tr>
+                `;
+            }
+        }
+    }
+
     // Summary cards
     const cardsEl = document.getElementById('cashflow-summary-cards');
     if (cardsEl) {
@@ -1663,8 +1725,10 @@ function renderCashFlow() {
         const monthlySalaries = cf.salaries.filter(s => s.active).reduce((a, s) => {
             return a + (s.frequency === 'monthly' ? s.amount : s.amount * 2.17);
         }, 0);
-        const pendingFreelancer = cf.plannedExpenses.filter(p => p.status !== 'payé').reduce((a, p) => a + (p.estimatedAmount || 0), 0);
-        const totalMonthly = monthlyRecurring + monthlySalaries;
+        const pendingFreelancerManual = cf.plannedExpenses.filter(p => p.status !== 'payé').reduce((a, p) => a + (p.estimatedAmount || 0), 0);
+        const pendingFreelancerAuto = retainerMonthlyTotal;
+        const pendingFreelancerTotal = pendingFreelancerManual + pendingFreelancerAuto;
+        const totalMonthly = monthlyRecurring + monthlySalaries + pendingFreelancerAuto;
 
         cardsEl.innerHTML = `
             <div class="kpi-summary-card blue">
@@ -1678,9 +1742,10 @@ function renderCashFlow() {
                 <div class="kpi-card-value">${formatCurrency(monthlySalaries)}</div>
             </div>
             <div class="kpi-summary-card cyan">
-                <div class="kpi-card-header"><div class="icon-wrap cyan">📋</div></div>
-                <div class="kpi-card-label">Freelancers à prévoir</div>
-                <div class="kpi-card-value">${formatCurrency(pendingFreelancer)}</div>
+                <div class="kpi-card-header"><div class="icon-wrap cyan">⏱️</div></div>
+                <div class="kpi-card-label">Freelancers ce mois</div>
+                <div class="kpi-card-value" style="color:var(--danger);">${formatCurrency(pendingFreelancerTotal)}</div>
+                ${pendingFreelancerAuto > 0 ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">dont ${formatCurrency(pendingFreelancerAuto)} auto (retainers)</div>` : ''}
             </div>
             <div class="kpi-summary-card green">
                 <div class="kpi-card-header"><div class="icon-wrap green">💸</div></div>
