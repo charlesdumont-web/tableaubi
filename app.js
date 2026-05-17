@@ -1903,14 +1903,15 @@ function renderBreakEvenPanel(metrics) {
     const debt = metrics.totalDebt;
     const freelancerDue = metrics.totalFreelancerOwed;
 
-    // Break-even = total monthly burn (what must come in as cash)
+    // Break-even collections = total monthly burn
     const breakEvenCollections = burn;
 
-    // Gap between current collections and break-even
+    // Gap
     const collectionGap = breakEvenCollections - avgRev;
     const isAboveBreakEven = collectionGap <= 0;
 
-    // Average margin from sales data: revenue vs freelancer cost
+    // Real net margin: (revenue - ALL costs) / revenue
+    // ALL costs = burn rate (salaries + recurring) + freelancer variable costs
     const sales = appData.salesLog || [];
     const totalSalesRev = sales.reduce((a, s) => a + (s.revenue || 0), 0);
     const retainers = appData.retainerProjects || [];
@@ -1919,21 +1920,33 @@ function renderBreakEvenPanel(metrics) {
         const entries = sales.filter(s => s.retainerProjectId === r.id);
         totalFreelancerCost += entries.reduce((a, s) => a + (s.retainerHours || 0), 0) * r.freelancerRate;
     });
-    // Also manual planned expenses
     const cf = appData.cashflow || { plannedExpenses: [] };
     totalFreelancerCost += cf.plannedExpenses.reduce((a, p) => a + (p.estimatedAmount || 0), 0);
 
-    const avgMargin = totalSalesRev > 0 ? Math.max(0.3, (totalSalesRev - totalFreelancerCost) / totalSalesRev) : 0.6;
+    // Estimate months of operation from sales data
+    const allDates = sales.map(s => s.date).filter(Boolean).sort();
+    const monthsOfOps = allDates.length > 1
+        ? Math.max(1, Math.ceil((new Date(allDates[allDates.length-1]) - new Date(allDates[0])) / (1000*60*60*24*30)))
+        : 3;
 
-    // Sales target = break-even / margin (since not all revenue is profit)
-    const salesTargetBreakEven = burn / avgMargin;
+    // Total all-time costs = freelancer costs + (monthly burn × months of operation)
+    const totalAllCosts = totalFreelancerCost + (burn * monthsOfOps);
+    // Net margin = (total revenue - total costs) / total revenue
+    // Default to 40% if not enough data (typical service business)
+    const netMargin = totalSalesRev > 5000
+        ? Math.max(0.15, Math.min(0.7, (totalSalesRev - totalAllCosts) / totalSalesRev))
+        : 0.40;
+
+    // Sales target at break-even = collections needed / net margin
+    const salesTargetBreakEven = breakEvenCollections / Math.max(0.15, netMargin);
 
     // With debt payoff in 6 months
     const debtPayoff6mo = debt > 0 ? debt / 6 : 0;
-    const salesTargetWithDebt = (burn + debtPayoff6mo + (freelancerDue > 0 ? freelancerDue / 3 : 0)) / avgMargin;
-    const collectionsWithDebt = burn + debtPayoff6mo + (freelancerDue > 0 ? freelancerDue / 3 : 0);
+    const freelancerPayoff3mo = freelancerDue > 0 ? freelancerDue / 3 : 0;
+    const collectionsWithDebt = burn + debtPayoff6mo + freelancerPayoff3mo;
+    const salesWithDebt = collectionsWithDebt / Math.max(0.15, netMargin);
 
-    // Collection rate (what % of billed gets collected)
+    // Collection rate
     const totalCollected = sales.reduce((a, s) => a + (s.collected || 0), 0);
     const collectionRate = totalSalesRev > 0 ? totalCollected / totalSalesRev : 0;
 
@@ -1941,12 +1954,18 @@ function renderBreakEvenPanel(metrics) {
     const gapIcon = isAboveBreakEven ? '✅' : '⚠️';
     const gapLabel = isAboveBreakEven ? 'Au-dessus du break-even' : 'Sous le break-even';
 
+    // Margin health
+    let marginLabel, marginColor;
+    if (netMargin >= 0.3) { marginLabel = 'Saine'; marginColor = 'var(--success)'; }
+    else if (netMargin >= 0.15) { marginLabel = 'Serrée'; marginColor = 'var(--warning)'; }
+    else { marginLabel = 'Critique'; marginColor = 'var(--danger)'; }
+
     el.innerHTML = `
         <div style="padding:20px 24px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                 <div>
                     <h3 style="font-size:16px; font-weight:700; color:var(--text-primary); margin:0;">🎯 Objectifs Break-Even</h3>
-                    <p style="font-size:12px; color:var(--text-muted); margin:4px 0 0;">Combien collecter et vendre pour couvrir les dépenses mensuelles</p>
+                    <p style="font-size:12px; color:var(--text-muted); margin:4px 0 0;">Combien collecter et vendre pour couvrir toutes les dépenses mensuelles</p>
                 </div>
                 <div style="padding:6px 14px; border-radius:20px; font-size:12px; font-weight:700; background:${isAboveBreakEven ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'}; color:${gapColor};">
                     ${gapIcon} ${gapLabel}
@@ -1974,7 +1993,7 @@ function renderBreakEvenPanel(metrics) {
                 <div style="padding:16px; border-radius:12px; background:rgba(139,92,246,0.05); border:1px solid rgba(139,92,246,0.12);">
                     <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:4px;">📋 Ventes requises / mois</div>
                     <div style="font-size:24px; font-weight:800; color:#8b5cf6;">${formatCurrency(salesTargetBreakEven)}</div>
-                    <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">Marge nette estimée : ${Math.round(avgMargin * 100)}%</div>
+                    <div style="font-size:12px; color:${marginColor}; margin-top:4px; font-weight:600;">Marge nette : ${Math.round(netMargin * 100)}% (${marginLabel})</div>
                 </div>
 
                 ${debt > 0 || freelancerDue > 0 ? `
@@ -1984,20 +2003,22 @@ function renderBreakEvenPanel(metrics) {
                     <div style="font-size:24px; font-weight:800; color:#f59e0b;">${formatCurrency(collectionsWithDebt)}</div>
                     <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">
                         ${debt > 0 ? 'Dettes: +' + formatCurrency(debtPayoff6mo) + '/mois' : ''}
-                        ${freelancerDue > 0 ? (debt > 0 ? ' + ' : '') + 'Freelancers: +' + formatCurrency(freelancerDue / 3) + '/mois' : ''}
+                        ${freelancerDue > 0 ? (debt > 0 ? ' · ' : '') + 'Freelancers: +' + formatCurrency(freelancerPayoff3mo) + '/mois' : ''}
                     </div>
                 </div>
                 ` : ''}
             </div>
 
-            ${collectionRate > 0 ? `
-            <div style="display:flex; gap:16px; align-items:center; padding:12px 16px; border-radius:10px; background:rgba(0,0,0,0.02); border:1px dashed var(--border-color);">
-                <div style="font-size:13px; color:var(--text-muted);">
-                    📈 <strong>Taux de recouvrement actuel :</strong> ${Math.round(collectionRate * 100)}% des ventes facturées sont collectées.
-                    ${collectionRate < 0.8 ? ' <span style="color:var(--warning);">⚠️ Améliorer le recouvrement pourrait réduire le gap.</span>' : ' <span style="color:var(--success);">✅ Bon taux.</span>'}
+            <div style="display:flex; gap:16px; flex-wrap:wrap;">
+                ${collectionRate > 0 ? `
+                <div style="flex:1; min-width:200px; padding:10px 14px; border-radius:10px; background:rgba(0,0,0,0.02); border:1px dashed var(--border-color); font-size:12px; color:var(--text-muted);">
+                    📈 <strong>Recouvrement :</strong> ${Math.round(collectionRate * 100)}% des ventes facturées collectées
+                    ${collectionRate < 0.8 ? ' — <span style="color:var(--warning);">⚠️ À améliorer</span>' : ' — <span style="color:var(--success);">✅ Bon</span>'}
+                </div>` : ''}
+                <div style="flex:1; min-width:200px; padding:10px 14px; border-radius:10px; background:rgba(0,0,0,0.02); border:1px dashed var(--border-color); font-size:12px; color:var(--text-muted);">
+                    📊 <strong>Calcul marge :</strong> basé sur ${monthsOfOps} mois d'opérations — rev. total ${formatCurrency(totalSalesRev)} vs coûts ${formatCurrency(totalAllCosts)}
                 </div>
             </div>
-            ` : ''}
         </div>
     `;
 }
