@@ -1971,14 +1971,39 @@ function renderHistoryTable() {
         }
     }
 
+    // Populate client filter dropdown
+    const clientFilter = document.getElementById('history-client-filter');
+    if (clientFilter) {
+        const currentVal = clientFilter.value;
+        const uniqueClients = [...new Set(
+            appData.salesLog.map(s => s.clientName).filter(Boolean)
+        )].sort();
+        const opts = '<option value="">Tous les clients</option>' +
+            uniqueClients.map(c => `<option value="${c}" ${c === currentVal ? 'selected' : ''}>${c}</option>`).join('');
+        if (clientFilter.innerHTML !== opts) clientFilter.innerHTML = opts;
+
+        // Apply client filter
+        if (currentVal) {
+            allTransactions = allTransactions.filter(tx => {
+                if (tx.isSale) return tx.clientName === currentVal;
+                if (tx.isCollection) {
+                    const parentSale = appData.salesLog.find(s => s.id === tx.saleId);
+                    return parentSale && parentSale.clientName === currentVal;
+                }
+                return false;
+            });
+        }
+    }
+
     tbody.innerHTML = allTransactions.map(tx => {
         if(tx.isSale) {
             const balance = tx.revenue - tx.collected;
             const clientName = tx.clientName || '—';
-            const projectName = tx.type === 'custom' ? (tx.projectName || '—') : '—';
+            const projectName = (tx.type === 'custom' || tx.type === 'retainer') ? (tx.projectName || '—') : '—';
             let typeBadge = '';
             if(tx.type==='audit') typeBadge='<span class="status-badge warning">Audit</span>';
             else if(tx.type==='telephonie') typeBadge='<span class="status-badge good">Téléphonie</span>';
+            else if(tx.type==='retainer') typeBadge='<span class="status-badge" style="background:rgba(245,158,11,0.1);color:#f59e0b;border-color:#f59e0b;">⏱️ Horaire</span>';
             else typeBadge='<span class="status-badge">Sur Mesure</span>';
 
             return `
@@ -2171,6 +2196,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a"); link.setAttribute("href", URL.createObjectURL(blob)); link.setAttribute("download", "synchroia_kpis_historique.csv"); link.style.visibility = 'hidden'; document.body.appendChild(link); link.click(); document.body.removeChild(link);
     });
+
+    // History: Client filter
+    document.getElementById('history-client-filter')?.addEventListener('change', () => renderHistoryTable());
 
     // CRM: Back to client list
     document.getElementById('btn-back-clients')?.addEventListener('click', () => {

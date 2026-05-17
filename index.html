@@ -448,7 +448,16 @@
             </div>
           </div>
           <div class="data-table-card">
-            <div class="data-table-header"><h3>Toutes les transactions</h3></div>
+            <div class="data-table-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <h3>Toutes les transactions</h3>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <label style="font-size:12px; color:var(--text-muted); white-space:nowrap;">Filtrer par client :</label>
+                <select id="history-client-filter" class="form-select" style="padding:5px 10px; font-size:13px; min-width:180px;">
+                  <option value="">Tous les clients</option>
+                  <!-- populated dynamically -->
+                </select>
+              </div>
+            </div>
             <div style="overflow-x:auto;">
               <table class="data-table">
                 <thead>
