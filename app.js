@@ -1898,27 +1898,29 @@ function renderCashFlowChart(metrics) {
 
     const weeklyBurn = metrics.totalMonthlyBurn / 4.33;
     const weeklyRevenue = metrics.avgMonthlyRevenue / 4.33;
-    let balance = metrics.bankBalance;
+    const balance = metrics.bankBalance;
 
-    const labels = ['Aujourd\'hui'];
-    const balanceData = [balance];
-    const burnLine = [balance];
-    const optimisticData = [balance];
-    let balanceTrack = balance;
-    let optimisticTrack = balance;
+    // Receivables spread over 8 weeks for optimistic scenario
+    const weeklyReceivable = metrics.totalReceivables / 8;
 
-    // Add receivables spread over next 6 weeks
-    const weeklyReceivable = metrics.totalReceivables / 6;
+    const labels = ['Auj.'];
+    // 3 scenarios: pessimistic (50% revenue), realistic (100% revenue), optimistic (100% revenue + receivables)
+    const pessData = [balance];
+    const realData = [balance];
+    const optData  = [balance];
+    let pTrack = balance, rTrack = balance, oTrack = balance;
 
     for (let i = 1; i <= 12; i++) {
-        const d = new Date(); d.setDate(d.getDate() + i * 7);
         labels.push('S' + i);
-        // Conservative: only known outflows
-        balanceTrack -= weeklyBurn;
-        balanceData.push(Math.round(balanceTrack));
-        // Optimistic: outflows + avg revenue + receivables recovery
-        optimisticTrack += (weeklyRevenue - weeklyBurn + (i <= 6 ? weeklyReceivable : 0));
-        optimisticData.push(Math.round(optimisticTrack));
+        // Pessimiste: 50% des revenus moyens - 100% des dépenses
+        pTrack += (weeklyRevenue * 0.5) - weeklyBurn;
+        pessData.push(Math.round(pTrack));
+        // Réaliste: 100% des revenus moyens - 100% des dépenses
+        rTrack += weeklyRevenue - weeklyBurn;
+        realData.push(Math.round(rTrack));
+        // Optimiste: 100% des revenus + recouvrement créances (sur 8 sem) - dépenses
+        oTrack += weeklyRevenue - weeklyBurn + (i <= 8 ? weeklyReceivable : 0);
+        optData.push(Math.round(oTrack));
     }
 
     if (cashFlowChartInstance) cashFlowChartInstance.destroy();
@@ -1928,20 +1930,30 @@ function renderCashFlowChart(metrics) {
             labels,
             datasets: [
                 {
-                    label: 'Projection pessimiste (sorties seulement)',
-                    data: balanceData,
+                    label: 'Pessimiste (50% revenus)',
+                    data: pessData,
                     borderColor: '#ef4444',
-                    backgroundColor: 'rgba(239,68,68,0.08)',
+                    backgroundColor: 'rgba(239,68,68,0.06)',
                     fill: true,
                     tension: 0.3,
                     borderWidth: 2,
                     pointRadius: 3
                 },
                 {
-                    label: 'Projection optimiste (+ revenus moyens)',
-                    data: optimisticData,
+                    label: 'Réaliste (revenus moyens)',
+                    data: realData,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59,130,246,0.06)',
+                    fill: false,
+                    tension: 0.3,
+                    borderWidth: 2.5,
+                    pointRadius: 3
+                },
+                {
+                    label: 'Optimiste (+ créances recouvrées)',
+                    data: optData,
                     borderColor: '#10b981',
-                    backgroundColor: 'rgba(16,185,129,0.08)',
+                    backgroundColor: 'rgba(16,185,129,0.06)',
                     fill: true,
                     tension: 0.3,
                     borderWidth: 2,
