@@ -132,6 +132,8 @@ async function initData() {
     if(!appData.cashflow) appData.cashflow = { recurringExpenses: [], salaries: [], plannedExpenses: [] };
     if(!appData.retainerProjects) appData.retainerProjects = [];
     if(!appData.freelancerPayments) appData.freelancerPayments = [];
+    if(appData.bankBalance === undefined) appData.bankBalance = 0;
+    if(!appData.bankBalanceUpdatedAt) appData.bankBalanceUpdatedAt = null;
     
     // Ensure all existing sales have the 'collected' attribute and an 'id' for backwards compatibility
     appData.salesLog.forEach(sale => {
@@ -500,6 +502,33 @@ function updateAlerts() {
             }
         });
     });
+
+    // 3. Cash Flow Alerts
+    if (typeof getCashFlowMetrics === 'function') {
+        const cfm = getCashFlowMetrics();
+        if (cfm.totalMonthlyBurn > 0 && cfm.runway < 2) {
+            alertCount++;
+            html += `<div class="alert-item critical"><div class="alert-icon">🚨</div><div class="alert-text"><div class="alert-title" style="color:var(--danger);">Runway critique : ${(Math.round(cfm.runway * 10) / 10)} mois</div><div class="alert-desc">Solde bancaire (${formatCurrency(cfm.bankBalance)}) couvre moins de 2 mois de dépenses (${formatCurrency(cfm.totalMonthlyBurn)}/mois).</div></div></div>`;
+        } else if (cfm.totalMonthlyBurn > 0 && cfm.runway < 3) {
+            alertCount++;
+            html += `<div class="alert-item warning"><div class="alert-icon">⚠️</div><div class="alert-text"><div class="alert-title">Runway à surveiller : ${(Math.round(cfm.runway * 10) / 10)} mois</div><div class="alert-desc">Solde bancaire de ${formatCurrency(cfm.bankBalance)} pour ${formatCurrency(cfm.totalMonthlyBurn)}/mois de dépenses.</div></div></div>`;
+        }
+        if (cfm.totalFreelancerOwed > 5000) {
+            alertCount++;
+            html += `<div class="alert-item warning"><div class="alert-icon">⚠️</div><div class="alert-text"><div class="alert-title">Solde freelancers élevé : ${formatCurrency(cfm.totalFreelancerOwed)}</div><div class="alert-desc">Le solde dû aux freelancers dépasse $5,000.</div></div></div>`;
+        }
+        if (cfm.totalReceivables > 3000) {
+            alertCount++;
+            html += `<div class="alert-item warning" style="border-left-color:var(--success);"><div class="alert-icon">💡</div><div class="alert-text"><div class="alert-title" style="color:var(--success);">${formatCurrency(cfm.totalReceivables)} en comptes à recevoir</div><div class="alert-desc">Collecter ces montants améliorerait votre runway de ${cfm.totalMonthlyBurn > 0 ? (Math.round(cfm.totalReceivables / cfm.totalMonthlyBurn * 10) / 10) : '∞'} mois.</div></div></div>`;
+        }
+        const cfAlerts = appData.cashflow || { plannedExpenses: [] };
+        const soon = new Date(); soon.setDate(soon.getDate() + 7);
+        const soonStr = soon.toISOString().split('T')[0];
+        cfAlerts.plannedExpenses.filter(p => p.status !== 'payé' && p.dueDate && p.dueDate <= soonStr).forEach(p => {
+            alertCount++;
+            html += `<div class="alert-item warning"><div class="alert-icon">📋</div><div class="alert-text"><div class="alert-title">Facture freelancer due bientôt : ${p.description}</div><div class="alert-desc">${formatCurrency(p.estimatedAmount)} — ${p.freelancerName || 'Freelancer'} — Échéance : ${formatDisplayDate(p.dueDate)}</div></div></div>`;
+        });
+    }
 
     const badge = document.getElementById('alert-count');
     if(badge) {
@@ -1599,11 +1628,124 @@ function renderProjects() {
     }
 }
 
-// --- Cash Flow ---
+// --- Cash Flow (Enhanced) ---
+// Helper: calculate monthly burn
+function getCashFlowMetrics() {
+    const cf = appData.cashflow || { recurringExpenses: [], salaries: [], plannedExpenses: [] };
+    const monthlyRecurring = cf.recurringExpenses.filter(r => r.active).reduce((a, r) => {
+        return a + (r.frequency === 'monthly' ? r.amount : r.amount * 2.17);
+    }, 0);
+    const monthlySalaries = cf.salaries.filter(s => s.active).reduce((a, s) => {
+        return a + (s.frequency === 'monthly' ? s.amount : s.amount * 2.17);
+    }, 0);
+
+    // Retainer freelancer owed
+    const retainers = appData.retainerProjects || [];
+    const sales = appData.salesLog || [];
+    const payments = appData.freelancerPayments || [];
+    let retainerOwed = 0;
+    retainers.forEach(r => {
+        const allEntries = sales.filter(s => s.retainerProjectId === r.id);
+        const allHours = allEntries.reduce((a, s) => a + (s.retainerHours || 0), 0);
+        const totalCost = allHours * r.freelancerRate;
+        const totalPaid = payments.filter(p => p.freelancerName === r.freelancerName && p.retainerProjectId === r.id).reduce((a, p) => a + (p.amount || 0), 0);
+        retainerOwed += (totalCost - totalPaid);
+    });
+
+    const pendingFreelancerManual = cf.plannedExpenses.filter(p => p.status !== 'payé').reduce((a, p) => a + (p.estimatedAmount || 0), 0);
+    const totalFreelancerOwed = retainerOwed + pendingFreelancerManual;
+    const totalMonthlyBurn = monthlyRecurring + monthlySalaries;
+    const bankBalance = appData.bankBalance || 0;
+    const runway = totalMonthlyBurn > 0 ? bankBalance / totalMonthlyBurn : Infinity;
+
+    // Average monthly revenue (last 3 months of collections)
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    const threeMonthsStr = threeMonthsAgo.toISOString().split('T')[0];
+    const recentCollections = (appData.collectionsLog || []).filter(c => c.date >= threeMonthsStr);
+    const totalRecentCollections = recentCollections.reduce((a, c) => a + (c.amount || 0), 0);
+    const avgMonthlyRevenue = totalRecentCollections / 3;
+    const cashRatio = totalMonthlyBurn > 0 ? avgMonthlyRevenue / totalMonthlyBurn : 0;
+
+    // Receivables
+    const totalReceivables = sales.reduce((a, s) => a + Math.max(0, (s.revenue || 0) - (s.collected || 0)), 0);
+
+    return { monthlyRecurring, monthlySalaries, totalMonthlyBurn, retainerOwed, pendingFreelancerManual, totalFreelancerOwed, bankBalance, runway, avgMonthlyRevenue, cashRatio, totalReceivables };
+}
+
 function renderCashFlow() {
     const cf = appData.cashflow || { recurringExpenses: [], salaries: [], plannedExpenses: [] };
-    
-    // Recurring expenses
+    const metrics = getCashFlowMetrics();
+
+    // --- Bank Balance Display ---
+    const balValEl = document.getElementById('bank-balance-value');
+    if (balValEl) balValEl.textContent = formatCurrency(metrics.bankBalance);
+
+    // Runway badge
+    const runwayBadge = document.getElementById('runway-badge');
+    const runwayValEl = document.getElementById('runway-value');
+    if (runwayBadge && runwayValEl) {
+        let runwayText, runwayBg, runwayColor;
+        if (metrics.totalMonthlyBurn === 0) {
+            runwayText = '∞'; runwayBg = 'rgba(16,185,129,0.1)'; runwayColor = 'var(--success)';
+        } else if (metrics.runway > 6) {
+            runwayText = Math.round(metrics.runway * 10) / 10 + ' mois'; runwayBg = 'rgba(16,185,129,0.12)'; runwayColor = 'var(--success)';
+        } else if (metrics.runway >= 2) {
+            runwayText = Math.round(metrics.runway * 10) / 10 + ' mois'; runwayBg = 'rgba(245,158,11,0.12)'; runwayColor = 'var(--warning)';
+        } else {
+            runwayText = Math.round(metrics.runway * 10) / 10 + ' mois'; runwayBg = 'rgba(239,68,68,0.12)'; runwayColor = 'var(--danger)';
+        }
+        runwayValEl.textContent = runwayText;
+        runwayBadge.style.background = runwayBg;
+        runwayBadge.style.color = runwayColor;
+    }
+
+    // --- Summary Cards (enhanced) ---
+    const cardsEl = document.getElementById('cashflow-summary-cards');
+    if (cardsEl) {
+        let ratioLabel, ratioColor;
+        if (metrics.cashRatio >= 2) { ratioLabel = '🟢 Excellent'; ratioColor = 'var(--success)'; }
+        else if (metrics.cashRatio >= 1) { ratioLabel = '🟡 Viable'; ratioColor = 'var(--warning)'; }
+        else { ratioLabel = '🔴 Déficit'; ratioColor = 'var(--danger)'; }
+
+        cardsEl.innerHTML = `
+            <div class="kpi-summary-card blue">
+                <div class="kpi-card-header"><div class="icon-wrap blue">🔄</div></div>
+                <div class="kpi-card-label">Dépenses Fixes / Mois</div>
+                <div class="kpi-card-value">${formatCurrency(metrics.monthlyRecurring)}</div>
+            </div>
+            <div class="kpi-summary-card purple">
+                <div class="kpi-card-header"><div class="icon-wrap purple">👤</div></div>
+                <div class="kpi-card-label">Salaires / Mois</div>
+                <div class="kpi-card-value">${formatCurrency(metrics.monthlySalaries)}</div>
+            </div>
+            <div class="kpi-summary-card cyan">
+                <div class="kpi-card-header"><div class="icon-wrap cyan">⏱️</div></div>
+                <div class="kpi-card-label">Solde dû Freelancers</div>
+                <div class="kpi-card-value" style="color:${metrics.totalFreelancerOwed > 0 ? 'var(--danger)' : 'var(--success)'};">${formatCurrency(metrics.totalFreelancerOwed)}</div>
+                ${metrics.pendingFreelancerManual > 0 ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">dont ${formatCurrency(metrics.pendingFreelancerManual)} factures manuelles</div>` : ''}
+            </div>
+            <div class="kpi-summary-card green">
+                <div class="kpi-card-header"><div class="icon-wrap green">🔥</div></div>
+                <div class="kpi-card-label">Burn Rate / Mois</div>
+                <div class="kpi-card-value" style="color:var(--danger);">${formatCurrency(metrics.totalMonthlyBurn)}</div>
+            </div>
+            <div class="kpi-summary-card cyan">
+                <div class="kpi-card-header"><div class="icon-wrap cyan">📊</div></div>
+                <div class="kpi-card-label">Revenus Moy. / Mois</div>
+                <div class="kpi-card-value" style="color:var(--success);">${formatCurrency(metrics.avgMonthlyRevenue)}</div>
+                <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Moyenne 3 derniers mois</div>
+            </div>
+            <div class="kpi-summary-card blue">
+                <div class="kpi-card-header"><div class="icon-wrap blue">⚖️</div></div>
+                <div class="kpi-card-label">Cash Ratio (Rev/Burn)</div>
+                <div class="kpi-card-value" style="color:${ratioColor};">${metrics.cashRatio.toFixed(1)}x</div>
+                <div style="font-size:11px; color:${ratioColor}; margin-top:4px; font-weight:600;">${ratioLabel}</div>
+            </div>
+        `;
+    }
+
+    // --- Recurring expenses table ---
     const recTbody = document.getElementById('recurring-tbody');
     if (recTbody) {
         recTbody.innerHTML = cf.recurringExpenses.map(r => {
@@ -1620,7 +1762,7 @@ function renderCashFlow() {
         }).join('') || '<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--text-muted);">Aucune dépense récurrente</td></tr>';
     }
 
-    // Salaries
+    // --- Salaries table ---
     const salTbody = document.getElementById('salaries-tbody');
     if (salTbody) {
         salTbody.innerHTML = cf.salaries.map(s => {
@@ -1636,7 +1778,7 @@ function renderCashFlow() {
         }).join('') || '<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--text-muted);">Aucun salaire enregistré</td></tr>';
     }
 
-    // Planned expenses
+    // --- Planned expenses table ---
     const planTbody = document.getElementById('planned-tbody');
     if (planTbody) {
         planTbody.innerHTML = cf.plannedExpenses.map(p => {
@@ -1655,66 +1797,49 @@ function renderCashFlow() {
         }).join('') || '<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text-muted);">Aucune facture planifiée</td></tr>';
     }
 
-    // Auto-calculated retainer freelancer payouts with payment tracking
+    // --- Retainer freelancer payouts (unchanged logic) ---
     const retPayTbody = document.getElementById('retainer-payouts-tbody');
     const retPayTfoot = document.getElementById('retainer-payouts-tfoot');
     const retainers = appData.retainerProjects || [];
     const sales = appData.salesLog || [];
     const payments = appData.freelancerPayments || [];
-    let totalOwed = 0;
 
     if (retPayTbody) {
         if (retainers.length === 0) {
             retPayTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text-muted);">Aucun projet en continu configuré</td></tr>';
             if (retPayTfoot) retPayTfoot.innerHTML = '';
         } else {
-            let rows = '';
-            let grandTotalCost = 0, grandTotalPaid = 0, grandTotalOwed = 0;
-
+            let rows = '', grandTotalCost = 0, grandTotalPaid = 0, grandTotalOwed = 0;
             retainers.forEach(r => {
                 const allEntries = sales.filter(s => s.retainerProjectId === r.id);
                 const allHours = allEntries.reduce((a, s) => a + (s.retainerHours || 0), 0);
                 const totalCost = allHours * r.freelancerRate;
-                const totalPaid = payments
-                    .filter(p => p.freelancerName === r.freelancerName && p.retainerProjectId === r.id)
-                    .reduce((a, p) => a + (p.amount || 0), 0);
+                const totalPaid = payments.filter(p => p.freelancerName === r.freelancerName && p.retainerProjectId === r.id).reduce((a, p) => a + (p.amount || 0), 0);
                 const owed = totalCost - totalPaid;
-
-                grandTotalCost += totalCost;
-                grandTotalPaid += totalPaid;
-                grandTotalOwed += owed;
-
+                grandTotalCost += totalCost; grandTotalPaid += totalPaid; grandTotalOwed += owed;
                 const owedColor = owed > 0 ? 'var(--danger)' : 'var(--success)';
                 const owedLabel = owed > 0 ? formatCurrency(owed) : '✅ $0';
-
                 rows += `<tr>
-                    <td style="font-weight:600;">${r.freelancerName}</td>
-                    <td>${r.projectName}</td>
-                    <td class="value-cell">${allHours}h</td>
-                    <td class="value-cell">${formatCurrency(r.freelancerRate)}/h</td>
+                    <td style="font-weight:600;">${r.freelancerName}</td><td>${r.projectName}</td>
+                    <td class="value-cell">${allHours}h</td><td class="value-cell">${formatCurrency(r.freelancerRate)}/h</td>
                     <td class="value-cell">${formatCurrency(totalCost)}</td>
                     <td class="value-cell" style="color:var(--success);">${formatCurrency(totalPaid)}</td>
                     <td class="value-cell" style="font-weight:700; color:${owedColor}; font-size:15px;">${owedLabel}</td>
                 </tr>`;
             });
-
             retPayTbody.innerHTML = rows;
-            totalOwed = grandTotalOwed;
-
             if (retPayTfoot) {
-                retPayTfoot.innerHTML = `
-                    <tr style="font-weight:700; background:rgba(245,158,11,0.06); border-top:2px solid var(--border-color);">
-                        <td colspan="4">TOTAL</td>
-                        <td class="value-cell">${formatCurrency(grandTotalCost)}</td>
-                        <td class="value-cell" style="color:var(--success);">${formatCurrency(grandTotalPaid)}</td>
-                        <td class="value-cell" style="color:var(--danger); font-size:16px;">${formatCurrency(grandTotalOwed)}</td>
-                    </tr>
-                `;
+                retPayTfoot.innerHTML = `<tr style="font-weight:700; background:rgba(245,158,11,0.06); border-top:2px solid var(--border-color);">
+                    <td colspan="4">TOTAL</td>
+                    <td class="value-cell">${formatCurrency(grandTotalCost)}</td>
+                    <td class="value-cell" style="color:var(--success);">${formatCurrency(grandTotalPaid)}</td>
+                    <td class="value-cell" style="color:var(--danger); font-size:16px;">${formatCurrency(grandTotalOwed)}</td>
+                </tr>`;
             }
         }
     }
 
-    // Payment history
+    // --- Payment history ---
     const payHistSection = document.getElementById('freelancer-payments-section');
     const payHistTbody = document.getElementById('freelancer-payments-tbody');
     if (payHistSection && payHistTbody) {
@@ -1734,61 +1859,195 @@ function renderCashFlow() {
         }
     }
 
-    // Summary cards
-    const cardsEl = document.getElementById('cashflow-summary-cards');
-    if (cardsEl) {
-        const monthlyRecurring = cf.recurringExpenses.filter(r => r.active).reduce((a, r) => {
-            return a + (r.frequency === 'monthly' ? r.amount : r.amount * 2.17);
-        }, 0);
-        const monthlySalaries = cf.salaries.filter(s => s.active).reduce((a, s) => {
-            return a + (s.frequency === 'monthly' ? s.amount : s.amount * 2.17);
-        }, 0);
-        const pendingFreelancerManual = cf.plannedExpenses.filter(p => p.status !== 'payé').reduce((a, p) => a + (p.estimatedAmount || 0), 0);
-        const totalFreelancerOwed = totalOwed + pendingFreelancerManual;
-        const totalMonthly = monthlyRecurring + monthlySalaries;
+    // --- Projection Chart ---
+    renderCashFlowChart(metrics);
 
-        cardsEl.innerHTML = `
-            <div class="kpi-summary-card blue">
-                <div class="kpi-card-header"><div class="icon-wrap blue">🔄</div></div>
-                <div class="kpi-card-label">Dépenses Fixes / Mois</div>
-                <div class="kpi-card-value">${formatCurrency(monthlyRecurring)}</div>
-            </div>
-            <div class="kpi-summary-card purple">
-                <div class="kpi-card-header"><div class="icon-wrap purple">👤</div></div>
-                <div class="kpi-card-label">Salaires / Mois</div>
-                <div class="kpi-card-value">${formatCurrency(monthlySalaries)}</div>
-            </div>
-            <div class="kpi-summary-card cyan">
-                <div class="kpi-card-header"><div class="icon-wrap cyan">⏱️</div></div>
-                <div class="kpi-card-label">Solde dû Freelancers</div>
-                <div class="kpi-card-value" style="color:${totalFreelancerOwed > 0 ? 'var(--danger)' : 'var(--success)'};">${formatCurrency(totalFreelancerOwed)}</div>
-                ${pendingFreelancerManual > 0 ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">dont ${formatCurrency(pendingFreelancerManual)} factures manuelles</div>` : ''}
-            </div>
-            <div class="kpi-summary-card green">
-                <div class="kpi-card-header"><div class="icon-wrap green">💸</div></div>
-                <div class="kpi-card-label">Total Sorties / Mois</div>
-                <div class="kpi-card-value" style="color:var(--danger);">${formatCurrency(totalMonthly)}</div>
-            </div>
-        `;
-    }
+    // --- Upcoming Expenses Timeline ---
+    renderUpcomingExpenses(metrics);
 }
 
-// Cash flow CRUD helpers
-window.deleteRecurring = async function(id) {
-    appData.cashflow.recurringExpenses = appData.cashflow.recurringExpenses.filter(r => r.id !== id);
-    saveData();
-};
-window.deleteSalary = async function(id) {
-    appData.cashflow.salaries = appData.cashflow.salaries.filter(s => s.id !== id);
-    saveData();
-};
-window.deletePlanned = async function(id) {
-    appData.cashflow.plannedExpenses = appData.cashflow.plannedExpenses.filter(p => p.id !== id);
-    saveData();
-};
-window.deleteFreelancerPayment = async function(id) {
-    appData.freelancerPayments = appData.freelancerPayments.filter(p => p.id !== id);
-    saveData();
+// --- Cash Flow Projection Chart (12 weeks) ---
+let cashFlowChartInstance = null;
+function renderCashFlowChart(metrics) {
+    const ctx = document.getElementById('chart-cashflow-projection');
+    if (!ctx) return;
+
+    const weeklyBurn = metrics.totalMonthlyBurn / 4.33;
+    const weeklyRevenue = metrics.avgMonthlyRevenue / 4.33;
+    let balance = metrics.bankBalance;
+
+    const labels = ['Aujourd\'hui'];
+    const balanceData = [balance];
+    const burnLine = [balance];
+    const optimisticData = [balance];
+    let balanceTrack = balance;
+    let optimisticTrack = balance;
+
+    // Add receivables spread over next 6 weeks
+    const weeklyReceivable = metrics.totalReceivables / 6;
+
+    for (let i = 1; i <= 12; i++) {
+        const d = new Date(); d.setDate(d.getDate() + i * 7);
+        labels.push('S' + i);
+        // Conservative: only known outflows
+        balanceTrack -= weeklyBurn;
+        balanceData.push(Math.round(balanceTrack));
+        // Optimistic: outflows + avg revenue + receivables recovery
+        optimisticTrack += (weeklyRevenue - weeklyBurn + (i <= 6 ? weeklyReceivable : 0));
+        optimisticData.push(Math.round(optimisticTrack));
+    }
+
+    if (cashFlowChartInstance) cashFlowChartInstance.destroy();
+    cashFlowChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Projection pessimiste (sorties seulement)',
+                    data: balanceData,
+                    borderColor: '#ef4444',
+                    backgroundColor: 'rgba(239,68,68,0.08)',
+                    fill: true,
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointRadius: 3
+                },
+                {
+                    label: 'Projection optimiste (+ revenus moyens)',
+                    data: optimisticData,
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16,185,129,0.08)',
+                    fill: true,
+                    tension: 0.3,
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    pointRadius: 3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top', labels: { font: { size: 11 }, usePointStyle: true } },
+                tooltip: {
+                    callbacks: { label: ctx => ctx.dataset.label.split('(')[0].trim() + ': ' + formatCurrency(ctx.raw) }
+                }
+            },
+            scales: {
+                y: {
+                    ticks: { callback: v => formatCurrency(v) },
+                    grid: { color: 'rgba(0,0,0,0.05)' }
+                },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+}
+
+// --- Upcoming Expenses Timeline (30 days) ---
+function renderUpcomingExpenses(metrics) {
+    const el = document.getElementById('upcoming-expenses-timeline');
+    if (!el) return;
+
+    const cf = appData.cashflow || { recurringExpenses: [], salaries: [], plannedExpenses: [] };
+    const today = new Date();
+    const in30 = new Date(); in30.setDate(in30.getDate() + 30);
+    let events = [];
+
+    // Salary paydays: assume biweekly on Fridays from today
+    cf.salaries.filter(s => s.active).forEach(s => {
+        const biweekly = s.frequency !== 'monthly';
+        if (biweekly) {
+            // Next 2 Fridays at 2-week intervals
+            let nextFri = new Date(today);
+            const dayOfWeek = nextFri.getDay();
+            const daysToFri = (5 - dayOfWeek + 7) % 7 || 7;
+            nextFri.setDate(nextFri.getDate() + daysToFri);
+            for (let i = 0; i < 2; i++) {
+                if (nextFri <= in30) {
+                    events.push({ date: new Date(nextFri), label: `💵 Salaire — ${s.employeeName}`, amount: s.amount, type: 'salary' });
+                }
+                nextFri.setDate(nextFri.getDate() + 14);
+            }
+        } else {
+            // Monthly: 1st of next month
+            const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+            if (nextMonth <= in30) {
+                events.push({ date: nextMonth, label: `💵 Salaire — ${s.employeeName}`, amount: s.amount, type: 'salary' });
+            }
+        }
+    });
+
+    // Planned freelancer invoices with due dates
+    cf.plannedExpenses.filter(p => p.status !== 'payé' && p.dueDate).forEach(p => {
+        const due = new Date(p.dueDate + 'T12:00:00');
+        if (due >= today && due <= in30) {
+            events.push({ date: due, label: `📋 ${p.description} — ${p.freelancerName || 'Freelancer'}`, amount: p.estimatedAmount, type: 'freelancer' });
+        }
+    });
+
+    // Recurring expenses: approximate next occurrence
+    cf.recurringExpenses.filter(r => r.active).forEach(r => {
+        const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+        if (nextMonth <= in30) {
+            events.push({ date: nextMonth, label: `🔄 ${r.name}`, amount: r.amount, type: 'recurring' });
+        }
+    });
+
+    events.sort((a, b) => a.date - b.date);
+
+    if (events.length === 0) {
+        el.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">📭 Aucune sortie identifiée dans les 30 prochains jours</div>';
+        return;
+    }
+
+    // Group by week
+    const weeks = {};
+    events.forEach(e => {
+        const weekStart = new Date(e.date);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1); // Monday
+        const key = weekStart.toISOString().split('T')[0];
+        if (!weeks[key]) weeks[key] = { events: [], total: 0, start: weekStart };
+        weeks[key].events.push(e);
+        weeks[key].total += e.amount;
+    });
+
+    const typeColors = { salary: '#8b5cf6', freelancer: '#f59e0b', recurring: '#3b82f6' };
+
+    el.innerHTML = Object.values(weeks).map(week => {
+        const weekLabel = formatDisplayDate(week.start.toISOString().split('T')[0]);
+        const daysFromNow = Math.round((week.start - today) / (1000 * 60 * 60 * 24));
+        const urgency = daysFromNow <= 7 ? 'rgba(239,68,68,0.06)' : 'rgba(0,0,0,0.02)';
+
+        return `<div style="margin-bottom:12px; padding:12px 16px; border-radius:10px; background:${urgency}; border:1px solid var(--border-color);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <div style="font-weight:700; font-size:13px; color:var(--text-primary);">
+                    ${daysFromNow <= 0 ? '🔴 Cette semaine' : daysFromNow <= 7 ? '🟡 Prochaine semaine' : '📆 Semaine du ' + weekLabel}
+                </div>
+                <div style="font-weight:800; font-size:14px; color:var(--danger);">${formatCurrency(week.total)}</div>
+            </div>
+            ${week.events.map(e => `<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-top:1px solid rgba(0,0,0,0.04);">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="width:8px; height:8px; border-radius:50%; background:${typeColors[e.type] || '#94a3b8'};"></div>
+                    <span style="font-size:13px;">${e.label}</span>
+                </div>
+                <span style="font-weight:700; font-size:13px; color:var(--danger);">${formatCurrency(e.amount)}</span>
+            </div>`).join('')}
+        </div>`;
+    }).join('');
+}
+
+// Bank balance modal
+window.openBankBalanceEdit = function() {
+    const modal = document.getElementById('modal-bankbalance-overlay');
+    document.getElementById('bankbalance-amount').value = appData.bankBalance || '';
+    const lastUp = document.getElementById('bankbalance-last-update');
+    if (lastUp && appData.bankBalanceUpdatedAt) {
+        lastUp.textContent = 'Dernière mise à jour : ' + formatDisplayDate(appData.bankBalanceUpdatedAt);
+    }
+    modal.classList.add('open');
 };
 
 // --- Retainer / Ongoing Projects ---
@@ -2640,6 +2899,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const toast = document.createElement('div'); toast.className = 'toast success';
         toast.innerHTML = `✅ Paiement de ${formatCurrency(amount)} enregistré pour ${r.freelancerName}`;
         document.body.appendChild(toast); setTimeout(() => toast.remove(), 4000);
+    });
+
+    // ===== MODAL: Bank Balance =====
+    const bankModal = document.getElementById('modal-bankbalance-overlay');
+    const closeBankModal = () => { bankModal.classList.remove('open'); };
+    document.getElementById('modal-bankbalance-close')?.addEventListener('click', closeBankModal);
+    document.getElementById('modal-bankbalance-cancel')?.addEventListener('click', closeBankModal);
+    document.getElementById('modal-bankbalance-save')?.addEventListener('click', () => {
+        const amount = parseFloat(document.getElementById('bankbalance-amount').value);
+        if (isNaN(amount) || amount < 0) { alert('Veuillez entrer un montant valide.'); return; }
+        appData.bankBalance = amount;
+        appData.bankBalanceUpdatedAt = TODAY_STR;
+        saveData(); closeBankModal();
+        const toast = document.createElement('div'); toast.className = 'toast success'; toast.innerHTML = `✅ Solde bancaire mis à jour : ${formatCurrency(amount)}`; document.body.appendChild(toast); setTimeout(() => toast.remove(), 4000);
     });
 
     // Trigger async data fetch

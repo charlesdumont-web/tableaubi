@@ -389,14 +389,51 @@
 
         <!-- ===== CASH FLOW ===== -->
         <section class="section" id="section-cashflow">
-          <div class="dept-header">
-            <div class="dept-icon" style="background:rgba(239,68,68,0.1);color:var(--danger);">💸</div>
-            <div class="dept-info">
-              <h2>Prévisions Cash-Flow</h2>
-              <p>Dépenses récurrentes, salaires et factures à prévoir</p>
+          <div class="dept-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:16px;">
+              <div class="dept-icon" style="background:rgba(239,68,68,0.1);color:var(--danger);">💸</div>
+              <div class="dept-info">
+                <h2>Prévisions Cash-Flow</h2>
+                <p>Solde bancaire, projections et gestion des sorties</p>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div id="bank-balance-display" style="display:flex; align-items:center; gap:8px; padding:8px 16px; background:linear-gradient(135deg, rgba(16,185,129,0.08), rgba(0,212,255,0.08)); border:1px solid rgba(16,185,129,0.2); border-radius:10px; cursor:pointer;" onclick="window.openBankBalanceEdit()">
+                <span style="font-size:20px;">🏦</span>
+                <div>
+                  <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Solde en banque</div>
+                  <div id="bank-balance-value" style="font-size:18px; font-weight:800; color:var(--success);">$0</div>
+                </div>
+                <span style="font-size:11px; color:var(--text-muted); margin-left:4px;">✏️</span>
+              </div>
+              <div id="runway-badge" style="padding:6px 14px; border-radius:20px; font-size:12px; font-weight:700; text-align:center;">
+                <div style="font-size:10px; text-transform:uppercase; letter-spacing:0.5px; opacity:0.8;">Runway</div>
+                <div id="runway-value">—</div>
+              </div>
             </div>
           </div>
+
+          <!-- Enhanced Summary Cards -->
           <div class="kpi-summary-grid" id="cashflow-summary-cards"></div>
+
+          <!-- Cash Flow Projection Chart -->
+          <div class="data-table-card" style="margin-bottom:16px;">
+            <div class="data-table-header">
+              <h3>📈 Projection Cash — 12 prochaines semaines</h3>
+              <p style="font-size:12px; color:var(--text-muted); margin-top:2px;">Évolution projetée du solde bancaire basée sur les sorties connues et les entrées prévues</p>
+            </div>
+            <div class="chart-container medium" style="padding:12px 16px;">
+              <canvas id="chart-cashflow-projection"></canvas>
+            </div>
+          </div>
+
+          <!-- Upcoming Expenses Timeline -->
+          <div class="data-table-card" style="margin-bottom:16px;">
+            <div class="data-table-header">
+              <h3>📅 Prochaines sorties — 30 jours</h3>
+            </div>
+            <div id="upcoming-expenses-timeline" style="padding:16px;"></div>
+          </div>
 
           <div class="data-table-card" style="margin-bottom:16px;">
             <div class="data-table-header" style="display:flex; justify-content:space-between; align-items:center;">
@@ -1052,7 +1089,31 @@
     </div>
   </div>
 
+  <!-- Modal: Bank Balance -->
+  <div class="modal-overlay" id="modal-bankbalance-overlay">
+    <div class="modal" style="max-width: 420px;">
+      <div class="modal-header">
+        <h2>🏦 Mettre à jour le Solde Bancaire</h2>
+        <button class="modal-close" id="modal-bankbalance-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label">Solde actuel en banque ($)</label>
+          <input type="number" id="bankbalance-amount" class="form-input" placeholder="Ex: 42500" min="0" step="0.01" style="font-size:18px; font-weight:700; padding:12px;">
+        </div>
+        <div style="padding:12px; background:rgba(59,130,246,0.04); border-radius:var(--radius-sm); border:1px dashed var(--border-color); font-size:13px; color:var(--text-muted);">
+          💡 Entrez le solde total de votre compte bancaire principal. Ce montant sera utilisé pour calculer votre runway et vos projections de cash flow.
+        </div>
+        <div id="bankbalance-last-update" style="margin-top:12px; font-size:11px; color:var(--text-muted); text-align:center;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="modal-bankbalance-cancel">Annuler</button>
+        <button class="btn btn-primary" id="modal-bankbalance-save">💾 Mettre à jour</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>
