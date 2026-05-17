@@ -1941,28 +1941,17 @@ function renderBreakEvenPanel(metrics) {
     const cf = appData.cashflow || { plannedExpenses: [] };
     totalFreelancerCost += cf.plannedExpenses.reduce((a, p) => a + (p.estimatedAmount || 0), 0);
 
-    // Estimate months of operation from sales data
-    const allDates = sales.map(s => s.date).filter(Boolean).sort();
-    const monthsOfOps = allDates.length > 1
-        ? Math.max(1, Math.ceil((new Date(allDates[allDates.length-1]) - new Date(allDates[0])) / (1000*60*60*24*30)))
-        : 3;
-
-    // Total all-time costs = freelancer costs + (monthly burn × months of operation)
-    const totalAllCosts = totalFreelancerCost + (burn * monthsOfOps);
-    // Net margin = (total revenue - total costs) / total revenue
-    // Default to 40% if not enough data (typical service business)
-    const netMargin = totalSalesRev > 5000
-        ? Math.max(0.15, Math.min(0.7, (totalSalesRev - totalAllCosts) / totalSalesRev))
-        : 0.40;
+    // Fixed net margin (configured)
+    const netMargin = 0.40;
 
     // Sales target at break-even = collections needed / net margin
-    const salesTargetBreakEven = breakEvenCollections / Math.max(0.15, netMargin);
+    const salesTargetBreakEven = breakEvenCollections / netMargin;
 
     // With debt payoff in 6 months
     const debtPayoff6mo = debt > 0 ? debt / 6 : 0;
     const freelancerPayoff3mo = freelancerDue > 0 ? freelancerDue / 3 : 0;
     const collectionsWithDebt = burn + debtPayoff6mo + freelancerPayoff3mo;
-    const salesWithDebt = collectionsWithDebt / Math.max(0.15, netMargin);
+    const salesWithDebt = collectionsWithDebt / netMargin;
 
     // Collection rate
     const totalCollected = sales.reduce((a, s) => a + (s.collected || 0), 0);
@@ -2034,7 +2023,7 @@ function renderBreakEvenPanel(metrics) {
                     ${collectionRate < 0.8 ? ' — <span style="color:var(--warning);">⚠️ À améliorer</span>' : ' — <span style="color:var(--success);">✅ Bon</span>'}
                 </div>` : ''}
                 <div style="flex:1; min-width:200px; padding:10px 14px; border-radius:10px; background:rgba(0,0,0,0.02); border:1px dashed var(--border-color); font-size:12px; color:var(--text-muted);">
-                    📊 <strong>Calcul marge :</strong> basé sur ${monthsOfOps} mois d'opérations — rev. total ${formatCurrency(totalSalesRev)} vs coûts ${formatCurrency(totalAllCosts)}
+                    📊 <strong>Marge nette :</strong> 40% fixe — ventes requises = collections / 0.40
                 </div>
             </div>
         </div>
