@@ -134,6 +134,8 @@ async function initData() {
     if(!appData.freelancerPayments) appData.freelancerPayments = [];
     if(appData.bankBalance === undefined) appData.bankBalance = 0;
     if(!appData.bankBalanceUpdatedAt) appData.bankBalanceUpdatedAt = null;
+    if(appData.creditCardDebt === undefined) appData.creditCardDebt = 0;
+    if(appData.lineOfCreditDebt === undefined) appData.lineOfCreditDebt = 0;
     
     // Ensure all existing sales have the 'collected' attribute and an 'id' for backwards compatibility
     appData.salesLog.forEach(sale => {
@@ -1656,6 +1658,10 @@ function getCashFlowMetrics() {
     const totalFreelancerOwed = retainerOwed + pendingFreelancerManual;
     const totalMonthlyBurn = monthlyRecurring + monthlySalaries;
     const bankBalance = appData.bankBalance || 0;
+    const creditCardDebt = appData.creditCardDebt || 0;
+    const lineOfCreditDebt = appData.lineOfCreditDebt || 0;
+    const totalDebt = creditCardDebt + lineOfCreditDebt;
+    const netPosition = bankBalance - totalDebt;
     const runway = totalMonthlyBurn > 0 ? bankBalance / totalMonthlyBurn : Infinity;
 
     // Average monthly revenue (last 3 months of collections)
@@ -1670,7 +1676,7 @@ function getCashFlowMetrics() {
     // Receivables
     const totalReceivables = sales.reduce((a, s) => a + Math.max(0, (s.revenue || 0) - (s.collected || 0)), 0);
 
-    return { monthlyRecurring, monthlySalaries, totalMonthlyBurn, retainerOwed, pendingFreelancerManual, totalFreelancerOwed, bankBalance, runway, avgMonthlyRevenue, cashRatio, totalReceivables };
+    return { monthlyRecurring, monthlySalaries, totalMonthlyBurn, retainerOwed, pendingFreelancerManual, totalFreelancerOwed, bankBalance, creditCardDebt, lineOfCreditDebt, totalDebt, netPosition, runway, avgMonthlyRevenue, cashRatio, totalReceivables };
 }
 
 function renderCashFlow() {
@@ -1742,6 +1748,24 @@ function renderCashFlow() {
                 <div class="kpi-card-value" style="color:${ratioColor};">${metrics.cashRatio.toFixed(1)}x</div>
                 <div style="font-size:11px; color:${ratioColor}; margin-top:4px; font-weight:600;">${ratioLabel}</div>
             </div>
+            ${metrics.totalDebt > 0 ? `
+            <div class="kpi-summary-card green" style="border-top:3px solid var(--danger);">
+                <div class="kpi-card-header"><div class="icon-wrap green" style="background:rgba(239,68,68,0.1);">💳</div></div>
+                <div class="kpi-card-label">Carte de Crédit</div>
+                <div class="kpi-card-value" style="color:var(--danger);">${formatCurrency(metrics.creditCardDebt)}</div>
+            </div>
+            <div class="kpi-summary-card green" style="border-top:3px solid var(--warning);">
+                <div class="kpi-card-header"><div class="icon-wrap green" style="background:rgba(245,158,11,0.1);">🏧</div></div>
+                <div class="kpi-card-label">Marge de Crédit</div>
+                <div class="kpi-card-value" style="color:var(--warning);">${formatCurrency(metrics.lineOfCreditDebt)}</div>
+            </div>
+            <div class="kpi-summary-card green" style="border-top:3px solid ${metrics.netPosition >= 0 ? 'var(--success)' : 'var(--danger)'};">
+                <div class="kpi-card-header"><div class="icon-wrap green" style="background:${metrics.netPosition >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'};">📍</div></div>
+                <div class="kpi-card-label">Position Nette</div>
+                <div class="kpi-card-value" style="color:${metrics.netPosition >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatCurrency(metrics.netPosition)}</div>
+                <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Banque - Dettes</div>
+            </div>
+            ` : ''}
         `;
     }
 
@@ -2043,11 +2067,32 @@ function renderUpcomingExpenses(metrics) {
 window.openBankBalanceEdit = function() {
     const modal = document.getElementById('modal-bankbalance-overlay');
     document.getElementById('bankbalance-amount').value = appData.bankBalance || '';
+    document.getElementById('creditcard-debt').value = appData.creditCardDebt || '';
+    document.getElementById('loc-debt').value = appData.lineOfCreditDebt || '';
+    // Update net position preview
+    window.updateDebtPreview();
     const lastUp = document.getElementById('bankbalance-last-update');
     if (lastUp && appData.bankBalanceUpdatedAt) {
         lastUp.textContent = 'Dernière mise à jour : ' + formatDisplayDate(appData.bankBalanceUpdatedAt);
     }
     modal.classList.add('open');
+};
+window.updateDebtPreview = function() {
+    const bal = parseFloat(document.getElementById('bankbalance-amount')?.value) || 0;
+    const cc = parseFloat(document.getElementById('creditcard-debt')?.value) || 0;
+    const loc = parseFloat(document.getElementById('loc-debt')?.value) || 0;
+    const net = bal - cc - loc;
+    const el = document.getElementById('debt-net-preview');
+    if (el) {
+        el.style.display = 'block';
+        el.innerHTML = `<div style="display:grid; grid-template-columns:1fr 1fr; gap:4px; font-size:13px;">
+            <div>Solde banque :</div><div style="font-weight:700; color:var(--success);">${formatCurrency(bal)}</div>
+            <div>- Carte crédit :</div><div style="font-weight:700; color:var(--danger);">${formatCurrency(cc)}</div>
+            <div>- Marge crédit :</div><div style="font-weight:700; color:var(--warning);">${formatCurrency(loc)}</div>
+            <div style="border-top:1px solid var(--border-color); padding-top:4px; font-weight:700;">= Position nette :</div>
+            <div style="border-top:1px solid var(--border-color); padding-top:4px; font-weight:800; font-size:16px; color:${net >= 0 ? 'var(--success)' : 'var(--danger)'}">${formatCurrency(net)}</div>
+        </div>`;
+    }
 };
 
 // --- Retainer / Ongoing Projects ---
@@ -2910,9 +2955,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const amount = parseFloat(document.getElementById('bankbalance-amount').value);
         if (isNaN(amount) || amount < 0) { alert('Veuillez entrer un montant valide.'); return; }
         appData.bankBalance = amount;
+        appData.creditCardDebt = parseFloat(document.getElementById('creditcard-debt').value) || 0;
+        appData.lineOfCreditDebt = parseFloat(document.getElementById('loc-debt').value) || 0;
         appData.bankBalanceUpdatedAt = TODAY_STR;
         saveData(); closeBankModal();
-        const toast = document.createElement('div'); toast.className = 'toast success'; toast.innerHTML = `✅ Solde bancaire mis à jour : ${formatCurrency(amount)}`; document.body.appendChild(toast); setTimeout(() => toast.remove(), 4000);
+        const net = amount - appData.creditCardDebt - appData.lineOfCreditDebt;
+        const toast = document.createElement('div'); toast.className = 'toast success'; toast.innerHTML = `✅ Finances mises à jour — Position nette : ${formatCurrency(net)}`; document.body.appendChild(toast); setTimeout(() => toast.remove(), 4000);
     });
 
     // Trigger async data fetch

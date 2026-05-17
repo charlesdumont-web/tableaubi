@@ -1089,20 +1089,31 @@
     </div>
   </div>
 
-  <!-- Modal: Bank Balance -->
+  <!-- Modal: Bank Balance + Debts -->
   <div class="modal-overlay" id="modal-bankbalance-overlay">
-    <div class="modal" style="max-width: 420px;">
+    <div class="modal" style="max-width: 480px;">
       <div class="modal-header">
-        <h2>🏦 Mettre à jour le Solde Bancaire</h2>
+        <h2>🏦 Mise à jour — Situation Financière</h2>
         <button class="modal-close" id="modal-bankbalance-close">✕</button>
       </div>
       <div class="modal-body">
         <div class="form-group" style="margin-bottom:16px;">
-          <label class="form-label">Solde actuel en banque ($)</label>
-          <input type="number" id="bankbalance-amount" class="form-input" placeholder="Ex: 42500" min="0" step="0.01" style="font-size:18px; font-weight:700; padding:12px;">
+          <label class="form-label" style="color:var(--success);">💰 Solde actuel en banque ($)</label>
+          <input type="number" id="bankbalance-amount" class="form-input" placeholder="Ex: 42500" min="0" step="0.01" style="font-size:18px; font-weight:700; padding:12px;" oninput="window.updateDebtPreview()">
         </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+          <div class="form-group">
+            <label class="form-label" style="color:var(--danger);">💳 Dette Carte de Crédit ($)</label>
+            <input type="number" id="creditcard-debt" class="form-input" placeholder="Ex: 3500" min="0" step="0.01" style="font-weight:600;" oninput="window.updateDebtPreview()">
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="color:var(--warning);">🏧 Dette Marge de Crédit ($)</label>
+            <input type="number" id="loc-debt" class="form-input" placeholder="Ex: 8000" min="0" step="0.01" style="font-weight:600;" oninput="window.updateDebtPreview()">
+          </div>
+        </div>
+        <div id="debt-net-preview" style="display:none; padding:12px; background:rgba(0,0,0,0.03); border-radius:var(--radius-sm); border:1px solid var(--border-color); margin-bottom:12px;"></div>
         <div style="padding:12px; background:rgba(59,130,246,0.04); border-radius:var(--radius-sm); border:1px dashed var(--border-color); font-size:13px; color:var(--text-muted);">
-          💡 Entrez le solde total de votre compte bancaire principal. Ce montant sera utilisé pour calculer votre runway et vos projections de cash flow.
+          💡 Entrez vos soldes actuels. La <strong>position nette</strong> (banque − dettes) donne votre vrai portrait financier.
         </div>
         <div id="bankbalance-last-update" style="margin-top:12px; font-size:11px; color:var(--text-muted); text-align:center;"></div>
       </div>
@@ -1114,6 +1125,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <script src="app.js?v=16"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>
